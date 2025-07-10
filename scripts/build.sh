@@ -488,11 +488,17 @@ verify_subvolume_layout() {
     log_info "Subvolume verification:"
     local subvolumes=("${SUBVOL_OS_A}" "${SUBVOL_OS_B}" "${SUBVOL_HOME}" "${SUBVOL_LOG}" "${SUBVOL_SWAP}")
     
+    # Get list of subvolumes from btrfs
+    local subvol_list
+    subvol_list=$(btrfs subvolume list "${temp_mount}")
+    
     for subvol in "${subvolumes[@]}"; do
-        if [[ -d "${temp_mount}/${subvol}" ]]; then
+        if echo "${subvol_list}" | grep -q "path ${subvol}$"; then
             log_info "✓ ${subvol} exists"
         else
             log_error "✗ ${subvol} missing"
+            log_info "Available subvolumes:"
+            echo "${subvol_list}"
             umount "${temp_mount}"
             rmdir "${temp_mount}"
             exit 1
