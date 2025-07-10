@@ -614,7 +614,19 @@ verify_installation() {
     
     # Check critical packages are actually installed via pacman
     local critical_packages=(
-        "base"
+        "filesystem"
+        "gcc-libs"
+        "glibc"
+        "bash"
+        "coreutils"
+        "file"
+        "findutils"
+        "gawk"
+        "grep"
+        "procps-ng"
+        "sed"
+        "tar"
+        "util-linux"
         "linux"
         "networkmanager"
         "plasma-desktop"
