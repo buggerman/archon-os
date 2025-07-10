@@ -44,16 +44,18 @@ readonly SUBVOL_ROOT="@"             # Root subvolume (container)
 readonly MOUNT_OPTS_RO="ro,noatime,compress=zstd:1,space_cache=v2"
 readonly MOUNT_OPTS_RW="rw,noatime,compress=zstd:1,space_cache=v2"
 
-# Package configuration - Sacred Minimal Core
-readonly BASE_PACKAGES=(
-    # Core system
+# Package configuration - Proper Arch Linux installation order
+
+# Minimal base system (installed first with pacstrap)
+readonly BASE_SYSTEM_PACKAGES=(
     "base"
     "linux"
     "linux-firmware"
     "btrfs-progs"
-    "systemd"
-    # Note: systemd-boot is included with systemd package
-    
+)
+
+# Additional packages (installed after base system)
+readonly ADDITIONAL_PACKAGES=(
     # Network and hardware
     "networkmanager"
     "bluez"
@@ -546,37 +548,54 @@ setup_pacman_mirrors() {
 bootstrap_base_system() {
     log_step "Bootstrapping ArchonOS base system"
     
-    log_info "Installing base system with pacstrap"
+    # Step 1: Install minimal base system with pacstrap
+    log_info "Installing minimal base system with pacstrap"
     log_info "Target: ${MOUNT_DIR}"
-    log_info "Packages: ${#BASE_PACKAGES[@]} total"
+    log_info "Base packages: ${#BASE_SYSTEM_PACKAGES[@]} total"
     
-    # Show package list being installed
-    log_info "Package list:"
-    for pkg in "${BASE_PACKAGES[@]}"; do
+    for pkg in "${BASE_SYSTEM_PACKAGES[@]}"; do
         log_info "  - ${pkg}"
     done
     
-    # Execute pacstrap with our minimal package set
-    log_info "Executing pacstrap (this may take several minutes)..."
-    if ! pacstrap "${MOUNT_DIR}" "${BASE_PACKAGES[@]}"; then
+    log_info "Executing pacstrap for base system (this may take several minutes)..."
+    if ! pacstrap "${MOUNT_DIR}" "${BASE_SYSTEM_PACKAGES[@]}"; then
         log_error "pacstrap failed to install base system"
         exit 1
     fi
     
-    log_success "Base system bootstrapped successfully"
+    log_success "Base system installed successfully"
+    
+    # Step 2: Install additional packages using arch-chroot and pacman
+    log_info "Installing additional packages via pacman"
+    log_info "Additional packages: ${#ADDITIONAL_PACKAGES[@]} total"
+    
+    # Create pacman command with all additional packages
+    local pacman_cmd="pacman -S --noconfirm"
+    for pkg in "${ADDITIONAL_PACKAGES[@]}"; do
+        pacman_cmd="${pacman_cmd} ${pkg}"
+    done
+    
+    log_info "Executing pacman in chroot environment..."
+    if ! arch-chroot "${MOUNT_DIR}" ${pacman_cmd}; then
+        log_error "Failed to install additional packages"
+        exit 1
+    fi
+    
+    log_success "All packages installed successfully"
 }
 
 verify_installation() {
     log_step "Verifying system installation"
     
     # Check critical packages are actually installed via pacman
+    # Note: systemd is included in base package, so we check for base instead
     local critical_packages=(
-        "systemd"
+        "base"
+        "linux"
         "plasma-desktop"
         "sddm" 
         "konsole"
         "flatpak"
-        "linux"
         "btrfs-progs"
     )
     
