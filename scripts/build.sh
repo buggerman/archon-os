@@ -54,10 +54,9 @@ readonly BASE_SYSTEM_PACKAGES=(
     "btrfs-progs"
 )
 
-# Additional packages (installed after base system)
+# Desktop packages (installed after archinstall base system)
 readonly ADDITIONAL_PACKAGES=(
-    # Network and hardware
-    "networkmanager"
+    # Hardware support
     "bluez"
     "bluez-utils"
     
@@ -75,25 +74,16 @@ readonly ADDITIONAL_PACKAGES=(
     "xorg-xwayland"
     "qt6-wayland"
     
-    # Application platforms
-    "flatpak"
-    
-    # Essential utilities
+    # Essential utilities (archinstall covers most basic ones)
     "sudo"
     "which"
-    "nano"
-    "git"
-    "curl"
-    "wget"
     "unzip"
     "tar"
     
     # Development foundation (for LinuxBrew)
-    "base-devel"
     "gcc"
     
-    # Audio (minimal)
-    "pipewire"
+    # Audio (pipewire handled by archinstall)
     "pipewire-pulse"
     "pipewire-alsa"
 )
@@ -545,44 +535,96 @@ setup_pacman_mirrors() {
     log_success "Package mirrors configured"
 }
 
+create_archinstall_config() {
+    log_step "Creating archinstall configuration"
+    
+    local config_file="${WORK_DIR}/user_configuration.json"
+    local creds_file="${WORK_DIR}/user_credentials.json"
+    
+    # Create minimal archinstall configuration (no DE)
+    log_info "Creating archinstall configuration file"
+    cat > "${config_file}" << 'EOF'
+{
+    "audio": "pipewire",
+    "bootloader": "systemd-boot",
+    "custom-commands": [],
+    "desktop-environment": null,
+    "gfx_driver": "All open-source",
+    "harddrives": [],
+    "hostname": "archonos",
+    "kernels": ["linux"],
+    "keyboard-language": "us",
+    "mirror-region": {},
+    "nic": {
+        "dhcp": true,
+        "dns": null,
+        "gateway": null,
+        "iface": null,
+        "ip": null,
+        "type": "nm"
+    },
+    "ntp": true,
+    "packages": [
+        "base-devel",
+        "git", 
+        "curl",
+        "wget",
+        "nano",
+        "btrfs-progs",
+        "flatpak"
+    ],
+    "profile": "minimal",
+    "services": ["NetworkManager"],
+    "swap": false,
+    "timezone": "UTC",
+    "version": "2.6.3"
+}
+EOF
+
+    # Create credentials file
+    log_info "Creating archinstall credentials file"
+    cat > "${creds_file}" << 'EOF'
+{
+    "!root-password": "archonos",
+    "!users": [
+        {
+            "!password": "archon",
+            "sudo": true,
+            "username": "archon"
+        }
+    ]
+}
+EOF
+
+    log_success "archinstall configuration created"
+}
+
 bootstrap_base_system() {
-    log_step "Bootstrapping ArchonOS base system"
+    log_step "Bootstrapping ArchonOS base system with archinstall"
     
-    # Step 1: Install minimal base system with pacstrap
-    log_info "Installing minimal base system with pacstrap"
-    log_info "Target: ${MOUNT_DIR}"
-    log_info "Base packages: ${#BASE_SYSTEM_PACKAGES[@]} total"
+    # Create archinstall configuration
+    create_archinstall_config
     
-    for pkg in "${BASE_SYSTEM_PACKAGES[@]}"; do
-        log_info "  - ${pkg}"
-    done
+    # Run archinstall with our configuration
+    log_info "Running archinstall with minimal configuration"
+    log_info "Target device: ${LOOP_DEVICE}"
     
-    log_info "Executing pacstrap for base system (this may take several minutes)..."
-    if ! pacstrap "${MOUNT_DIR}" "${BASE_SYSTEM_PACKAGES[@]}"; then
-        log_error "pacstrap failed to install base system"
+    if ! archinstall --config "${WORK_DIR}/user_configuration.json" \
+                    --creds "${WORK_DIR}/user_credentials.json" \
+                    --disk-layout '{"device": "'${LOOP_DEVICE}'", "layout": "ext4"}' \
+                    --silent; then
+        log_error "archinstall failed"
         exit 1
     fi
     
-    log_success "Base system installed successfully"
+    log_success "Base system installed with archinstall"
     
-    # Step 2: Install additional packages using arch-chroot and pacman
-    log_info "Installing additional packages via pacman"
-    log_info "Additional packages: ${#ADDITIONAL_PACKAGES[@]} total"
+    # Step 2: Install desktop packages using arch-chroot and pacman  
+    log_info "Installing desktop packages via arch-chroot"
+    log_info "Desktop packages: ${#ADDITIONAL_PACKAGES[@]} total"
     
-    # Ensure pacman configuration is available in chroot
-    log_info "Setting up pacman configuration in chroot"
-    if [[ ! -f "${MOUNT_DIR}/etc/pacman.conf" ]]; then
-        cp /etc/pacman.conf "${MOUNT_DIR}/etc/pacman.conf"
-    fi
-    
-    # Copy mirrorlist if it doesn't exist
-    if [[ ! -f "${MOUNT_DIR}/etc/pacman.d/mirrorlist" ]]; then
-        mkdir -p "${MOUNT_DIR}/etc/pacman.d"
-        cp /etc/pacman.d/mirrorlist "${MOUNT_DIR}/etc/pacman.d/mirrorlist"
-    fi
-    
-    # Install packages in smaller batches to avoid command line length issues
-    log_info "Installing additional packages in batches..."
+    # Install desktop packages in batches
+    log_info "Installing desktop packages in batches..."
     local batch_size=10
     local batch_count=0
     local current_batch=()
@@ -594,7 +636,7 @@ bootstrap_base_system() {
         if [[ ${batch_count} -eq ${batch_size} ]] || [[ ${pkg} == "${ADDITIONAL_PACKAGES[-1]}" ]]; then
             log_info "Installing batch: ${current_batch[*]}"
             if ! arch-chroot "${MOUNT_DIR}" pacman -S --noconfirm "${current_batch[@]}"; then
-                log_error "Failed to install package batch: ${current_batch[*]}"
+                log_error "Failed to install desktop package batch: ${current_batch[*]}"
                 exit 1
             fi
             current_batch=()
