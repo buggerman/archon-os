@@ -577,68 +577,20 @@ bootstrap_base_system() {
     cp /etc/pacman.conf "${MOUNT_DIR}/etc/pacman.conf"
     
     # Step 2: Set up proper chroot environment (following Arch Wiki)
-    log_info "Setting up proper chroot environment per Arch Wiki"
+    # No manual API filesystem mounting needed for arch-chroot
+    log_info "Using arch-chroot for package installation (handles mounting automatically)"
     
-    # Mount API filesystems (required for chroot per Arch Wiki)
-    log_info "Mounting API filesystems for chroot"
-    mount -t proc /proc "${MOUNT_DIR}/proc"
-    mount -t sysfs /sys "${MOUNT_DIR}/sys" 
-    mount --bind /dev "${MOUNT_DIR}/dev"
-    mount --bind /dev/pts "${MOUNT_DIR}/dev/pts"
-    
-    # Copy DNS configuration for network connectivity (critical per Arch Wiki)
-    log_info "Copying DNS configuration"
-    cp /etc/resolv.conf "${MOUNT_DIR}/etc/resolv.conf"
-    
-    # Step 3: Install desktop packages using traditional chroot (arch-chroot may not work in containers)
-    log_info "Installing desktop packages via chroot"
+    # Step 3: Install desktop packages using simple pacman in chroot (simplified approach)
+    log_info "Installing desktop packages via arch-chroot"
     log_info "Desktop packages: ${#DESKTOP_PACKAGES[@]} total"
     
-    # Synchronize package database in chroot environment before installing packages
-    log_info "Synchronizing package database in chroot environment"
-    if ! chroot "${MOUNT_DIR}" /bin/bash -c "pacman -Sy --noconfirm"; then
-        log_error "Failed to synchronize package database in chroot"
-        # Cleanup mounts
-        umount "${MOUNT_DIR}/dev/pts" || true
-        umount "${MOUNT_DIR}/dev" || true
-        umount "${MOUNT_DIR}/sys" || true
-        umount "${MOUNT_DIR}/proc" || true
+    # Install all desktop packages in one command (simpler, more reliable)
+    log_info "Installing desktop packages: ${DESKTOP_PACKAGES[*]}"
+    if ! arch-chroot "${MOUNT_DIR}" pacman -S --noconfirm "${DESKTOP_PACKAGES[@]}"; then
+        log_error "Failed to install desktop packages"
         exit 1
     fi
-    log_success "Package database synchronized in chroot"
-    
-    # Install packages individually for better error reporting
-    log_info "Installing desktop packages individually..."
-    local pkg_count=0
-    local total_count=${#DESKTOP_PACKAGES[@]}
-    
-    for pkg in "${DESKTOP_PACKAGES[@]}"; do
-        ((pkg_count++))
-        log_info "Installing package ${pkg_count}/${total_count}: ${pkg}"
-        
-        if ! chroot "${MOUNT_DIR}" /bin/bash -c "pacman -S --noconfirm --needed ${pkg}"; then
-            log_error "Failed to install package: ${pkg}"
-            log_error "Attempting to show pacman error details"
-            chroot "${MOUNT_DIR}" /bin/bash -c "pacman -Q ${pkg}" 2>&1 || true
-            # Cleanup mounts
-            umount "${MOUNT_DIR}/dev/pts" || true
-            umount "${MOUNT_DIR}/dev" || true
-            umount "${MOUNT_DIR}/sys" || true
-            umount "${MOUNT_DIR}/proc" || true
-            exit 1
-        fi
-        
-        log_info "✓ Successfully installed: ${pkg}"
-    done
-    
-    # Cleanup mounts
-    log_info "Cleaning up API filesystem mounts"
-    umount "${MOUNT_DIR}/dev/pts" || true
-    umount "${MOUNT_DIR}/dev" || true  
-    umount "${MOUNT_DIR}/sys" || true
-    umount "${MOUNT_DIR}/proc" || true
-    
-    log_success "All packages installed successfully"
+    log_success "Desktop packages installed successfully"
 }
 
 verify_installation() {
