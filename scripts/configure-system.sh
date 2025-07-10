@@ -224,6 +224,11 @@ main() {
     create_default_user
     configure_immutable_root
     
+    # Add installer command to bashrc for easy access
+    log_info "Setting up installer command alias"
+    echo "alias install-archonos='sudo /usr/local/bin/install-archonos'" >> /home/archon/.bashrc
+    echo "alias install='sudo /usr/local/bin/install-archonos'" >> /home/archon/.bashrc
+    
     log_success "ArchonOS system configuration completed successfully"
     log_info "System is ready for bootloader installation"
 }

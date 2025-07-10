@@ -760,6 +760,28 @@ execute_system_configuration() {
         exit 1
     fi
     
+    # Copy installer script to live system
+    log_info "Adding installer script to live system"
+    cp "${SCRIPT_DIR}/install-archonos.sh" "${MOUNT_DIR}/usr/local/bin/install-archonos"
+    chmod +x "${MOUNT_DIR}/usr/local/bin/install-archonos"
+    
+    # Create desktop shortcut for installer
+    log_info "Creating installer desktop shortcut"
+    mkdir -p "${MOUNT_DIR}/home/archon/Desktop"
+    cat > "${MOUNT_DIR}/home/archon/Desktop/install-archonos.desktop" << 'EOF'
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Install ArchonOS
+Comment=Install ArchonOS to Hard Drive
+Exec=konsole -e sudo install-archonos
+Icon=system-software-install
+Terminal=false
+Categories=System;
+EOF
+    chmod +x "${MOUNT_DIR}/home/archon/Desktop/install-archonos.desktop"
+    arch-chroot "${MOUNT_DIR}" chown -R archon:archon /home/archon/Desktop 2>/dev/null || true
+    
     # Clean up configuration script
     rm -f "${MOUNT_DIR}/configure-system.sh"
     
@@ -1015,7 +1037,8 @@ create_iso_structure() {
     
     # Copy installer script into ISO
     log_info "Adding installer script"
-    cp "${SCRIPT_DIR}/install-archonos.sh" "${ISO_DIR}/archonos/" 2>/dev/null || true
+    cp "${SCRIPT_DIR}/install-archonos.sh" "${ISO_DIR}/archonos/"
+    chmod +x "${ISO_DIR}/archonos/install-archonos.sh"
     
     log_success "ISO structure created"
 }
