@@ -1062,7 +1062,6 @@ generate_iso() {
         -volid "${iso_label}" \
         -publisher "${iso_publisher}" \
         -preparer "${iso_application}" \
-        -application-id "${iso_application}" \
         -appid "${iso_application}" \
         -eltorito-boot isolinux/isolinux.bin \
         -eltorito-catalog isolinux/boot.cat \
