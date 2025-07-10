@@ -52,7 +52,7 @@ readonly BASE_PACKAGES=(
     "linux-firmware"
     "btrfs-progs"
     "systemd"
-    "systemd-boot"
+    # Note: systemd-boot is included with systemd package
     
     # Network and hardware
     "networkmanager"
@@ -61,11 +61,17 @@ readonly BASE_PACKAGES=(
     
     # Desktop environment (KDE Plasma minimal)
     "plasma-desktop"
-    "plasma-wayland-session"
+    "plasma-workspace"
+    "kwin"
     "sddm"
     "konsole"
     "dolphin"
     "kate"
+    
+    # Wayland support
+    "wayland"
+    "xorg-xwayland"
+    "qt6-wayland"
     
     # Application platforms
     "flatpak"
