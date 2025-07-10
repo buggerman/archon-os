@@ -580,11 +580,27 @@ bootstrap_base_system() {
     # No manual API filesystem mounting needed for arch-chroot
     log_info "Using arch-chroot for package installation (handles mounting automatically)"
     
-    # Step 3: Install desktop packages using simple pacman in chroot (simplified approach)
+    # Step 3: Initialize pacman keyring and install desktop packages
+    log_info "Initializing pacman keyring in chroot"
+    
+    # Initialize and populate the pacman keyring (required for package signature verification)
+    log_info "Initializing pacman keyring..."
+    if ! arch-chroot "${MOUNT_DIR}" pacman-key --init; then
+        log_error "Failed to initialize pacman keyring"
+        exit 1
+    fi
+    
+    log_info "Populating Arch Linux keyring..."
+    if ! arch-chroot "${MOUNT_DIR}" pacman-key --populate archlinux; then
+        log_error "Failed to populate Arch Linux keyring"
+        exit 1
+    fi
+    
+    # Now install desktop packages with proper keyring
     log_info "Installing desktop packages via arch-chroot"
     log_info "Desktop packages: ${#DESKTOP_PACKAGES[@]} total"
     
-    # Install all desktop packages in one command (simpler, more reliable)
+    # Install all desktop packages in one command
     log_info "Installing desktop packages: ${DESKTOP_PACKAGES[*]}"
     if ! arch-chroot "${MOUNT_DIR}" pacman -S --noconfirm "${DESKTOP_PACKAGES[@]}"; then
         log_error "Failed to install desktop packages"
