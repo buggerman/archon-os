@@ -569,17 +569,38 @@ bootstrap_base_system() {
     log_info "Installing additional packages via pacman"
     log_info "Additional packages: ${#ADDITIONAL_PACKAGES[@]} total"
     
-    # Create pacman command with all additional packages
-    local pacman_cmd="pacman -S --noconfirm"
-    for pkg in "${ADDITIONAL_PACKAGES[@]}"; do
-        pacman_cmd="${pacman_cmd} ${pkg}"
-    done
-    
-    log_info "Executing pacman in chroot environment..."
-    if ! arch-chroot "${MOUNT_DIR}" ${pacman_cmd}; then
-        log_error "Failed to install additional packages"
-        exit 1
+    # Ensure pacman configuration is available in chroot
+    log_info "Setting up pacman configuration in chroot"
+    if [[ ! -f "${MOUNT_DIR}/etc/pacman.conf" ]]; then
+        cp /etc/pacman.conf "${MOUNT_DIR}/etc/pacman.conf"
     fi
+    
+    # Copy mirrorlist if it doesn't exist
+    if [[ ! -f "${MOUNT_DIR}/etc/pacman.d/mirrorlist" ]]; then
+        mkdir -p "${MOUNT_DIR}/etc/pacman.d"
+        cp /etc/pacman.d/mirrorlist "${MOUNT_DIR}/etc/pacman.d/mirrorlist"
+    fi
+    
+    # Install packages in smaller batches to avoid command line length issues
+    log_info "Installing additional packages in batches..."
+    local batch_size=10
+    local batch_count=0
+    local current_batch=()
+    
+    for pkg in "${ADDITIONAL_PACKAGES[@]}"; do
+        current_batch+=("${pkg}")
+        ((batch_count++))
+        
+        if [[ ${batch_count} -eq ${batch_size} ]] || [[ ${pkg} == "${ADDITIONAL_PACKAGES[-1]}" ]]; then
+            log_info "Installing batch: ${current_batch[*]}"
+            if ! arch-chroot "${MOUNT_DIR}" pacman -S --noconfirm "${current_batch[@]}"; then
+                log_error "Failed to install package batch: ${current_batch[*]}"
+                exit 1
+            fi
+            current_batch=()
+            batch_count=0
+        fi
+    done
     
     log_success "All packages installed successfully"
 }
