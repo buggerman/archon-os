@@ -571,7 +571,7 @@ verify_installation() {
     
     # Check critical system files exist
     local critical_files=(
-        "${MOUNT_DIR}/usr/bin/systemd"
+        "${MOUNT_DIR}/usr/lib/systemd/systemd"
         "${MOUNT_DIR}/usr/bin/plasma-desktop"
         "${MOUNT_DIR}/usr/bin/sddm"
         "${MOUNT_DIR}/usr/bin/konsole"
