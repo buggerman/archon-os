@@ -1121,25 +1121,30 @@ generate_iso() {
         fi
     done
     
-    # Create isolinux.cfg configuration file for installation ISO
+    # Create isolinux.cfg configuration file for installation ISO  
     log_info "Creating isolinux.cfg"
     cat > "${ISO_DIR}/isolinux/isolinux.cfg" << EOF
 DEFAULT install
-TIMEOUT 50
+TIMEOUT 30
 PROMPT 0
 UI menu.c32
 
-MENU TITLE ArchonOS Installation
+MENU TITLE ArchonOS Installer
 
 LABEL install
     MENU LABEL Install ArchonOS to Hard Drive
     KERNEL /boot/vmlinuz-linux
     APPEND initrd=/boot/initramfs-linux.img archisobasedir=archonos archisolabel=ARCHONOS cow_spacesize=1G
-
+    
 LABEL rescue
-    MENU LABEL ArchonOS Rescue Mode  
+    MENU LABEL ArchonOS Rescue Mode
     KERNEL /boot/vmlinuz-linux
     APPEND initrd=/boot/initramfs-linux.img archisobasedir=archonos archisolabel=ARCHONOS cow_spacesize=1G rescue
+    
+LABEL install_nomodeset
+    MENU LABEL Install ArchonOS (safe graphics)
+    KERNEL /boot/vmlinuz-linux
+    APPEND initrd=/boot/initramfs-linux.img archisobasedir=archonos archisolabel=ARCHONOS cow_spacesize=1G nomodeset
 EOF
 
     log_info "Running xorriso command..."
