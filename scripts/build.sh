@@ -569,21 +569,23 @@ bootstrap_base_system() {
 verify_installation() {
     log_step "Verifying system installation"
     
-    # Check critical system files exist
-    local critical_files=(
-        "${MOUNT_DIR}/usr/lib/systemd/systemd"
-        "${MOUNT_DIR}/usr/bin/plasma-desktop"
-        "${MOUNT_DIR}/usr/bin/sddm"
-        "${MOUNT_DIR}/usr/bin/konsole"
-        "${MOUNT_DIR}/usr/bin/flatpak"
+    # Check critical packages are actually installed via pacman
+    local critical_packages=(
+        "systemd"
+        "plasma-desktop"
+        "sddm" 
+        "konsole"
+        "flatpak"
+        "linux"
+        "btrfs-progs"
     )
     
-    log_info "Checking critical system files:"
-    for file in "${critical_files[@]}"; do
-        if [[ -f "${file}" ]]; then
-            log_info "✓ ${file##*/} installed"
+    log_info "Checking critical packages installation:"
+    for pkg in "${critical_packages[@]}"; do
+        if arch-chroot "${MOUNT_DIR}" pacman -Q "${pkg}" &>/dev/null; then
+            log_info "✓ ${pkg} installed"
         else
-            log_error "✗ ${file##*/} missing"
+            log_error "✗ ${pkg} missing"
             exit 1
         fi
     done
