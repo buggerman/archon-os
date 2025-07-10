@@ -719,7 +719,7 @@ copy_configuration_script() {
     log_step "Copying system configuration script"
     
     local config_script="${PROJECT_ROOT}/scripts/configure-system.sh"
-    local target_script="${MOUNT_DIR}/tmp/configure-system.sh"
+    local target_script="${MOUNT_DIR}/configure-system.sh"
     
     if [[ ! -f "${config_script}" ]]; then
         log_error "Configuration script not found: ${config_script}"
@@ -755,13 +755,13 @@ execute_system_configuration() {
         export "${env_var}"
     done
     
-    if ! arch-chroot "${MOUNT_DIR}" /tmp/configure-system.sh; then
+    if ! arch-chroot "${MOUNT_DIR}" /configure-system.sh; then
         log_error "System configuration failed"
         exit 1
     fi
     
     # Clean up configuration script
-    rm -f "${MOUNT_DIR}/tmp/configure-system.sh"
+    rm -f "${MOUNT_DIR}/configure-system.sh"
     
     log_success "System configuration completed successfully"
 }
