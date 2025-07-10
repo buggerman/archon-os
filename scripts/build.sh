@@ -662,6 +662,169 @@ configure_system() {
     log_success "System configuration phase completed"
 }
 
+# Bootloader installation functions
+install_systemd_boot() {
+    log_step "Installing systemd-boot bootloader"
+    
+    log_info "Installing systemd-boot to EFI system partition"
+    
+    # Install systemd-boot using bootctl from within chroot
+    if ! arch-chroot "${MOUNT_DIR}" bootctl install; then
+        log_error "Failed to install systemd-boot"
+        exit 1
+    fi
+    
+    log_success "systemd-boot installed successfully"
+}
+
+create_boot_entries() {
+    log_step "Creating boot entries"
+    
+    local entries_dir="${MOUNT_DIR}/boot/loader/entries"
+    local root_uuid
+    root_uuid=$(blkid -s UUID -o value "${LOOP_DEVICE_ROOT}")
+    
+    log_info "Creating boot entry directories"
+    mkdir -p "${entries_dir}"
+    
+    # Get kernel version
+    local kernel_version
+    kernel_version=$(ls "${MOUNT_DIR}/usr/lib/modules/" | head -n1)
+    log_info "Detected kernel version: ${kernel_version}"
+    
+    # Create primary boot entry for @os_a
+    log_info "Creating primary boot entry (os_a)"
+    cat > "${entries_dir}/archonos.conf" << EOF
+title   ArchonOS
+linux   /vmlinuz-linux
+initrd  /initramfs-linux.img
+options root=UUID=${root_uuid} rootflags=subvol=${SUBVOL_OS_A} rw quiet splash
+EOF
+    
+    # Create fallback boot entry
+    log_info "Creating fallback boot entry"
+    cat > "${entries_dir}/archonos-fallback.conf" << EOF
+title   ArchonOS (fallback initramfs)
+linux   /vmlinuz-linux
+initrd  /initramfs-linux-fallback.img
+options root=UUID=${root_uuid} rootflags=subvol=${SUBVOL_OS_A} rw
+EOF
+    
+    # Create A/B update boot entry for @os_b (for future use)
+    log_info "Creating update boot entry (os_b)"
+    cat > "${entries_dir}/archonos-update.conf" << EOF
+title   ArchonOS (Update)
+linux   /vmlinuz-linux
+initrd  /initramfs-linux.img
+options root=UUID=${root_uuid} rootflags=subvol=${SUBVOL_OS_B} rw quiet splash
+EOF
+    
+    log_success "Boot entries created successfully"
+}
+
+configure_bootloader() {
+    log_step "Configuring systemd-boot loader"
+    
+    local loader_dir="${MOUNT_DIR}/boot/loader"
+    
+    log_info "Creating loader configuration"
+    
+    # Create main loader configuration
+    cat > "${loader_dir}/loader.conf" << EOF
+default  archonos.conf
+timeout  5
+console-mode max
+editor   no
+auto-entries yes
+auto-firmware yes
+EOF
+    
+    # Create boot entry for atomic updates
+    log_info "Bootloader configured for atomic A/B updates"
+    log_info "Default boot: @os_a subvolume"
+    log_info "Update target: @os_b subvolume"
+    log_info "Timeout: 5 seconds"
+    
+    log_success "Bootloader configuration completed"
+}
+
+setup_initramfs() {
+    log_step "Configuring initramfs for Btrfs"
+    
+    log_info "Adding Btrfs support to mkinitcpio"
+    
+    # Backup original mkinitcpio.conf
+    cp "${MOUNT_DIR}/etc/mkinitcpio.conf" "${MOUNT_DIR}/etc/mkinitcpio.conf.backup"
+    
+    # Configure mkinitcpio for Btrfs and atomic updates
+    log_info "Updating mkinitcpio hooks and modules"
+    sed -i 's/^MODULES=()/MODULES=(btrfs)/' "${MOUNT_DIR}/etc/mkinitcpio.conf"
+    sed -i 's/^HOOKS=.*/HOOKS=(base udev autodetect modconf kms keyboard keymap consolefont block filesystems fsck)/' "${MOUNT_DIR}/etc/mkinitcpio.conf"
+    
+    # Regenerate initramfs
+    log_info "Regenerating initramfs images"
+    if ! arch-chroot "${MOUNT_DIR}" mkinitcpio -P; then
+        log_error "Failed to regenerate initramfs"
+        exit 1
+    fi
+    
+    log_success "Initramfs configured for Btrfs boot"
+}
+
+verify_bootloader_installation() {
+    log_step "Verifying bootloader installation"
+    
+    # Check if systemd-boot is installed
+    if [[ ! -f "${MOUNT_DIR}/boot/EFI/systemd/systemd-bootx64.efi" ]]; then
+        log_error "systemd-boot EFI binary not found"
+        exit 1
+    fi
+    
+    # Check boot entries
+    local entries_dir="${MOUNT_DIR}/boot/loader/entries"
+    local required_entries=("archonos.conf" "archonos-fallback.conf" "archonos-update.conf")
+    
+    log_info "Verifying boot entries:"
+    for entry in "${required_entries[@]}"; do
+        if [[ -f "${entries_dir}/${entry}" ]]; then
+            log_info "✓ ${entry}"
+        else
+            log_error "✗ ${entry} missing"
+            exit 1
+        fi
+    done
+    
+    # Check loader configuration
+    if [[ -f "${MOUNT_DIR}/boot/loader/loader.conf" ]]; then
+        log_info "✓ loader.conf"
+    else
+        log_error "✗ loader.conf missing"
+        exit 1
+    fi
+    
+    # Check kernel and initramfs
+    if [[ -f "${MOUNT_DIR}/boot/vmlinuz-linux" ]] && [[ -f "${MOUNT_DIR}/boot/initramfs-linux.img" ]]; then
+        log_info "✓ Kernel and initramfs present"
+    else
+        log_error "✗ Kernel or initramfs missing"
+        exit 1
+    fi
+    
+    log_success "Bootloader installation verified"
+}
+
+install_bootloader() {
+    log_step "Installing and configuring bootloader"
+    
+    setup_initramfs
+    install_systemd_boot
+    create_boot_entries
+    configure_bootloader
+    verify_bootloader_installation
+    
+    log_success "Bootloader installation completed"
+}
+
 prepare_disk() {
     log_step "Preparing disk for ArchonOS installation"
     
@@ -691,11 +854,13 @@ build_image() {
     # Configure system via arch-chroot
     configure_system
     
+    # Install and configure bootloader
+    install_bootloader
+    
     # Placeholder for subsequent phases
-    log_info "Bootloader setup will be implemented in Phase 7"
     log_info "ISO creation will be implemented in Phase 8"
     
-    log_success "ArchonOS system configuration completed"
+    log_success "ArchonOS bootable system completed"
 }
 
 # Display build information
