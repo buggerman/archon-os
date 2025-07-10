@@ -980,7 +980,7 @@ create_iso_structure() {
     
     # Clean and create ISO directory
     rm -rf "${ISO_DIR}"
-    mkdir -p "${ISO_DIR}"/{EFI/BOOT,archonos,syslinux}
+    mkdir -p "${ISO_DIR}"/{EFI/BOOT,archonos,boot}
     
     # Copy disk image to ISO
     log_info "Copying disk image to ISO structure"
@@ -997,10 +997,25 @@ create_iso_structure() {
         exit 1
     fi
     
-    # Copy kernel and initramfs for live boot
+    # Copy kernel and initramfs
     log_info "Copying kernel and initramfs"
-    cp "${MOUNT_DIR}/boot/vmlinuz-linux" "${ISO_DIR}/archonos/"
-    cp "${MOUNT_DIR}/boot/initramfs-linux.img" "${ISO_DIR}/archonos/"
+    cp "${MOUNT_DIR}/boot/vmlinuz-linux" "${ISO_DIR}/boot/"
+    cp "${MOUNT_DIR}/boot/initramfs-linux.img" "${ISO_DIR}/boot/"
+    
+    # Create SquashFS for live system
+    log_info "Creating SquashFS for live system"
+    mkdir -p "${ISO_DIR}/archonos/x86_64"
+    
+    # Create a minimal rootfs for the live environment
+    log_info "Creating live system SquashFS"
+    if ! mksquashfs "${MOUNT_DIR}" "${ISO_DIR}/archonos/x86_64/airootfs.sfs" -e boot -comp xz; then
+        log_error "Failed to create SquashFS"
+        exit 1
+    fi
+    
+    # Copy installer script into ISO
+    log_info "Adding installer script"
+    cp "${SCRIPT_DIR}/install-archonos.sh" "${ISO_DIR}/archonos/" 2>/dev/null || true
     
     log_success "ISO structure created"
 }
@@ -1013,26 +1028,26 @@ create_iso_boot_config() {
     
     # Create loader configuration
     cat > "${ISO_DIR}/loader/loader.conf" << EOF
-default  archonos-live.conf
+default  archonos-install.conf
 timeout  10
 console-mode max
 editor   no
 EOF
     
-    # Create live boot entry
-    cat > "${ISO_DIR}/loader/entries/archonos-live.conf" << EOF
-title   ArchonOS Live Installer
-linux   /archonos/vmlinuz-linux
-initrd  /archonos/initramfs-linux.img
-options root=/dev/ram0 ramdisk_size=2097152 archiso_label=ARCHONOS cow_spacesize=1G
-EOF
-    
     # Create installation boot entry
     cat > "${ISO_DIR}/loader/entries/archonos-install.conf" << EOF
 title   Install ArchonOS to Hard Drive
-linux   /archonos/vmlinuz-linux
-initrd  /archonos/initramfs-linux.img
-options root=/dev/ram0 ramdisk_size=2097152 archiso_label=ARCHONOS cow_spacesize=1G archonos_install=1
+linux   /boot/vmlinuz-linux
+initrd  /boot/initramfs-linux.img
+options archisobasedir=archonos archisolabel=ARCHONOS cow_spacesize=1G
+EOF
+    
+    # Create rescue boot entry
+    cat > "${ISO_DIR}/loader/entries/archonos-rescue.conf" << EOF
+title   ArchonOS Rescue Mode
+linux   /boot/vmlinuz-linux
+initrd  /boot/initramfs-linux.img
+options archisobasedir=archonos archisolabel=ARCHONOS cow_spacesize=1G rescue
 EOF
     
     log_success "ISO boot configuration created"
@@ -1076,22 +1091,25 @@ generate_iso() {
         exit 1
     fi
     
-    # Create isolinux.cfg configuration file
+    # Create isolinux.cfg configuration file for installation ISO
     log_info "Creating isolinux.cfg"
     cat > "${ISO_DIR}/isolinux/isolinux.cfg" << EOF
-DEFAULT archonos
+DEFAULT install
 TIMEOUT 50
 PROMPT 0
+UI menu.c32
 
-LABEL archonos
-    MENU LABEL ArchonOS Live Installer
-    KERNEL /archonos/vmlinuz-linux
-    APPEND initrd=/archonos/initramfs-linux.img root=/dev/ram0 ramdisk_size=2097152 archiso_label=ARCHONOS cow_spacesize=1G
+MENU TITLE ArchonOS Installation
 
 LABEL install
     MENU LABEL Install ArchonOS to Hard Drive
-    KERNEL /archonos/vmlinuz-linux
-    APPEND initrd=/archonos/initramfs-linux.img root=/dev/ram0 ramdisk_size=2097152 archiso_label=ARCHONOS cow_spacesize=1G archonos_install=1
+    KERNEL /boot/vmlinuz-linux
+    APPEND initrd=/boot/initramfs-linux.img archisobasedir=archonos archisolabel=ARCHONOS cow_spacesize=1G
+
+LABEL rescue
+    MENU LABEL ArchonOS Rescue Mode  
+    KERNEL /boot/vmlinuz-linux
+    APPEND initrd=/boot/initramfs-linux.img archisobasedir=archonos archisolabel=ARCHONOS cow_spacesize=1G rescue
 EOF
 
     log_info "Running xorriso command..."
