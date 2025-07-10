@@ -1044,14 +1044,17 @@ generate_iso() {
     local iso_label="ARCHONOS"
     local iso_publisher="ArchonOS Project"
     local iso_application="ArchonOS ${BUILD_VERSION}"
+    local xorriso_log="${BUILD_DIR}/xorriso.log"
     
     log_info "Creating ISO with xorriso"
     log_info "Label: ${iso_label}"
     log_info "Publisher: ${iso_publisher}"
     log_info "Application: ${iso_application}"
     log_info "Output: ${ISO_FILE}"
+    log_info "Log file: ${xorriso_log}"
     
     # Generate ISO using xorriso with EFI boot support
+    log_info "Running xorriso command..."
     if ! xorriso -as mkisofs \
         -iso-level 3 \
         -o "${ISO_FILE}" \
@@ -1071,12 +1074,20 @@ generate_iso() {
         -no-emul-boot \
         -isohybrid-gpt-basdat \
         -isohybrid-apm-hfsplus \
-        "${ISO_DIR}" 2>/dev/null; then
+        "${ISO_DIR}" >"${xorriso_log}" 2>&1; then
         
         log_error "ISO generation failed"
+        log_error "xorriso output (last 50 lines):"
+        echo "----------------------------------------"
+        tail -n 50 "${xorriso_log}"
+        echo "----------------------------------------"
+        log_error "Full xorriso log available at: ${xorriso_log}"
         exit 1
     fi
     
+    log_info "xorriso completed successfully"
+    log_info "xorriso output summary (last 10 lines):"
+    tail -n 10 "${xorriso_log}"
     log_success "ISO image generated successfully"
 }
 
