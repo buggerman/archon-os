@@ -32,6 +32,18 @@ readonly EFI_SIZE="512M"
 readonly ROOT_PARTITION_TYPE="8304"  # Linux root (x86-64)
 readonly EFI_PARTITION_TYPE="ef00"   # EFI System Partition
 
+# Btrfs subvolume configuration
+readonly SUBVOL_OS_A="@os_a"         # Primary OS subvolume (active)
+readonly SUBVOL_OS_B="@os_b"         # Secondary OS subvolume (update target)
+readonly SUBVOL_HOME="@home"         # User data persistence
+readonly SUBVOL_LOG="@log"           # System logs isolation
+readonly SUBVOL_SWAP="@swap"         # Swap file containment
+readonly SUBVOL_ROOT="@"             # Root subvolume (container)
+
+# Mount options for immutable root filesystem
+readonly MOUNT_OPTS_RO="ro,noatime,compress=zstd:1,space_cache=v2"
+readonly MOUNT_OPTS_RW="rw,noatime,compress=zstd:1,space_cache=v2"
+
 # Loop device variables
 LOOP_DEVICE=""
 LOOP_DEVICE_ROOT=""
@@ -75,13 +87,28 @@ log_step() {
 cleanup_loop_devices() {
     log_info "Cleaning up loop devices"
     
-    # Unmount any mounted filesystems
-    if mountpoint -q "${MOUNT_DIR}/boot" 2>/dev/null; then
-        umount "${MOUNT_DIR}/boot" || log_warn "Failed to unmount boot partition"
+    # Unmount subvolumes in reverse order
+    local mount_points=(
+        "${MOUNT_DIR}/swap"
+        "${MOUNT_DIR}/var/log"
+        "${MOUNT_DIR}/home"
+        "${MOUNT_DIR}/boot"
+        "${MOUNT_DIR}"
+    )
+    
+    for mount_point in "${mount_points[@]}"; do
+        if mountpoint -q "${mount_point}" 2>/dev/null; then
+            umount "${mount_point}" || log_warn "Failed to unmount ${mount_point}"
+        fi
+    done
+    
+    # Clean up any temporary mounts
+    if mountpoint -q "${WORK_DIR}/btrfs_temp" 2>/dev/null; then
+        umount "${WORK_DIR}/btrfs_temp" || log_warn "Failed to unmount temporary Btrfs mount"
     fi
     
-    if mountpoint -q "${MOUNT_DIR}" 2>/dev/null; then
-        umount "${MOUNT_DIR}" || log_warn "Failed to unmount root partition"
+    if mountpoint -q "${WORK_DIR}/verify_temp" 2>/dev/null; then
+        umount "${WORK_DIR}/verify_temp" || log_warn "Failed to unmount verification mount"
     fi
     
     # Detach loop devices
@@ -128,10 +155,12 @@ check_dependencies() {
         "pacstrap"
         "arch-chroot"
         "mkfs.btrfs"
+        "btrfs"
         "parted"
         "losetup"
         "mount"
         "umount"
+        "findmnt"
         "xorriso"
     )
     
@@ -295,6 +324,102 @@ verify_disk_layout() {
     log_success "Disk layout verified successfully"
 }
 
+# Btrfs subvolume functions
+create_btrfs_subvolumes() {
+    log_step "Creating Btrfs subvolume layout"
+    
+    # Mount root Btrfs filesystem temporarily to create subvolumes
+    local temp_mount="${WORK_DIR}/btrfs_temp"
+    mkdir -p "${temp_mount}"
+    
+    log_info "Mounting Btrfs root filesystem"
+    mount "${LOOP_DEVICE_ROOT}" "${temp_mount}"
+    
+    # Create all required subvolumes
+    log_info "Creating atomic A/B subvolumes"
+    btrfs subvolume create "${temp_mount}/${SUBVOL_OS_A}"
+    btrfs subvolume create "${temp_mount}/${SUBVOL_OS_B}"
+    
+    log_info "Creating persistent data subvolumes"
+    btrfs subvolume create "${temp_mount}/${SUBVOL_HOME}"
+    btrfs subvolume create "${temp_mount}/${SUBVOL_LOG}"
+    btrfs subvolume create "${temp_mount}/${SUBVOL_SWAP}"
+    
+    # Set default subvolume to @os_a for initial boot
+    local subvol_id
+    subvol_id=$(btrfs subvolume list "${temp_mount}" | grep "${SUBVOL_OS_A}" | awk '{print $2}')
+    btrfs subvolume set-default "${subvol_id}" "${temp_mount}"
+    
+    log_info "Subvolume structure:"
+    btrfs subvolume list "${temp_mount}"
+    
+    # Unmount temporary mount
+    umount "${temp_mount}"
+    rmdir "${temp_mount}"
+    
+    log_success "Btrfs subvolumes created successfully"
+}
+
+mount_subvolumes_for_install() {
+    log_step "Mounting subvolumes for system installation"
+    
+    # Mount the active OS subvolume as root
+    log_info "Mounting ${SUBVOL_OS_A} as root filesystem"
+    mount -o "${MOUNT_OPTS_RW},subvol=${SUBVOL_OS_A}" "${LOOP_DEVICE_ROOT}" "${MOUNT_DIR}"
+    
+    # Create mount points for other subvolumes and EFI
+    mkdir -p "${MOUNT_DIR}"/{boot,home,var/log,swap}
+    
+    # Mount EFI partition
+    log_info "Mounting EFI partition"
+    mount "${LOOP_DEVICE_EFI}" "${MOUNT_DIR}/boot"
+    
+    # Mount persistent data subvolumes
+    log_info "Mounting persistent data subvolumes"
+    mount -o "${MOUNT_OPTS_RW},subvol=${SUBVOL_HOME}" "${LOOP_DEVICE_ROOT}" "${MOUNT_DIR}/home"
+    mount -o "${MOUNT_OPTS_RW},subvol=${SUBVOL_LOG}" "${LOOP_DEVICE_ROOT}" "${MOUNT_DIR}/var/log"
+    mount -o "${MOUNT_OPTS_RW},subvol=${SUBVOL_SWAP}" "${LOOP_DEVICE_ROOT}" "${MOUNT_DIR}/swap"
+    
+    # Verify mount structure
+    log_info "Current mount structure:"
+    findmnt "${MOUNT_DIR}" || true
+    
+    log_success "Subvolumes mounted successfully"
+}
+
+verify_subvolume_layout() {
+    log_step "Verifying subvolume layout"
+    
+    # Mount root filesystem temporarily to verify subvolumes
+    local temp_mount="${WORK_DIR}/verify_temp"
+    mkdir -p "${temp_mount}"
+    mount "${LOOP_DEVICE_ROOT}" "${temp_mount}"
+    
+    log_info "Subvolume verification:"
+    local subvolumes=("${SUBVOL_OS_A}" "${SUBVOL_OS_B}" "${SUBVOL_HOME}" "${SUBVOL_LOG}" "${SUBVOL_SWAP}")
+    
+    for subvol in "${subvolumes[@]}"; do
+        if [[ -d "${temp_mount}/${subvol}" ]]; then
+            log_info "✓ ${subvol} exists"
+        else
+            log_error "✗ ${subvol} missing"
+            umount "${temp_mount}"
+            rmdir "${temp_mount}"
+            exit 1
+        fi
+    done
+    
+    # Check default subvolume
+    local default_subvol
+    default_subvol=$(btrfs subvolume get-default "${temp_mount}" | awk '{print $NF}')
+    log_info "Default subvolume: ${default_subvol}"
+    
+    umount "${temp_mount}"
+    rmdir "${temp_mount}"
+    
+    log_success "Subvolume layout verified successfully"
+}
+
 prepare_disk() {
     log_step "Preparing disk for ArchonOS installation"
     
@@ -304,6 +429,9 @@ prepare_disk() {
     format_efi_partition
     format_root_partition
     verify_disk_layout
+    create_btrfs_subvolumes
+    verify_subvolume_layout
+    mount_subvolumes_for_install
     
     log_success "Disk preparation completed successfully"
 }
@@ -312,16 +440,16 @@ prepare_disk() {
 build_image() {
     log_step "Building ArchonOS image"
     
-    # Prepare disk and partitions
+    # Prepare disk, partitions, and subvolumes
     prepare_disk
     
     # Placeholder for subsequent phases
-    log_info "Btrfs subvolume creation will be implemented in Phase 4"
     log_info "System installation will be implemented in Phase 5"
+    log_info "System configuration will be implemented in Phase 6"
     log_info "Bootloader setup will be implemented in Phase 7"
     log_info "ISO creation will be implemented in Phase 8"
     
-    log_success "Image preparation completed"
+    log_success "Disk and subvolume preparation completed"
 }
 
 # Display build information
