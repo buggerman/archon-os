@@ -207,6 +207,7 @@ check_dependencies() {
         "mount"
         "umount"
         "findmnt"
+        "blkid"
         "xorriso"
     )
     
@@ -562,6 +563,105 @@ install_base_system() {
     log_success "Base system installation completed"
 }
 
+# System configuration functions
+generate_fstab() {
+    log_step "Generating fstab with immutable root configuration"
+    
+    log_info "Creating fstab with read-only root filesystem"
+    
+    # Get filesystem UUIDs
+    local root_uuid efi_uuid
+    root_uuid=$(blkid -s UUID -o value "${LOOP_DEVICE_ROOT}")
+    efi_uuid=$(blkid -s UUID -o value "${LOOP_DEVICE_EFI}")
+    
+    log_info "Root UUID: ${root_uuid}"
+    log_info "EFI UUID: ${efi_uuid}"
+    
+    # Create fstab with proper mount options
+    cat > "${MOUNT_DIR}/etc/fstab" << EOF
+# ArchonOS fstab - Immutable Root Filesystem Configuration
+# <file system>                               <dir>      <type>  <options>                                           <dump>  <pass>
+
+# Root subvolume (read-only for immutability)
+UUID=${root_uuid}                             /          btrfs   ${MOUNT_OPTS_RO},subvol=${SUBVOL_OS_A}              0       1
+
+# EFI System Partition
+UUID=${efi_uuid}                              /boot      vfat    rw,relatime,fmask=0022,dmask=0022,codepage=437,iocharset=ascii,shortname=mixed,utf8,errors=remount-ro  0  2
+
+# Persistent data subvolumes (read-write)
+UUID=${root_uuid}                             /home      btrfs   ${MOUNT_OPTS_RW},subvol=${SUBVOL_HOME}              0       2
+UUID=${root_uuid}                             /var/log   btrfs   ${MOUNT_OPTS_RW},subvol=${SUBVOL_LOG}               0       2
+UUID=${root_uuid}                             /swap      btrfs   ${MOUNT_OPTS_RW},subvol=${SUBVOL_SWAP}              0       2
+
+# Temporary filesystems
+tmpfs                                         /tmp       tmpfs   defaults,noatime,mode=1777                          0       0
+tmpfs                                         /var/tmp   tmpfs   defaults,noatime,mode=1777                          0       0
+EOF
+    
+    log_success "fstab generated successfully"
+}
+
+copy_configuration_script() {
+    log_step "Copying system configuration script"
+    
+    local config_script="${PROJECT_ROOT}/scripts/configure-system.sh"
+    local target_script="${MOUNT_DIR}/tmp/configure-system.sh"
+    
+    if [[ ! -f "${config_script}" ]]; then
+        log_error "Configuration script not found: ${config_script}"
+        exit 1
+    fi
+    
+    log_info "Copying configuration script to chroot environment"
+    cp "${config_script}" "${target_script}"
+    chmod +x "${target_script}"
+    
+    log_success "Configuration script copied successfully"
+}
+
+execute_system_configuration() {
+    log_step "Executing system configuration via arch-chroot"
+    
+    # Set configuration environment variables
+    local config_env=(
+        "HOSTNAME=archonos"
+        "TIMEZONE=UTC"
+        "LOCALE=en_US.UTF-8"
+        "KEYMAP=us"
+    )
+    
+    log_info "Configuration parameters:"
+    for env_var in "${config_env[@]}"; do
+        log_info "  - ${env_var}"
+    done
+    
+    # Execute configuration script in chroot
+    log_info "Executing configuration script in chroot environment"
+    for env_var in "${config_env[@]}"; do
+        export "${env_var}"
+    done
+    
+    if ! arch-chroot "${MOUNT_DIR}" /tmp/configure-system.sh; then
+        log_error "System configuration failed"
+        exit 1
+    fi
+    
+    # Clean up configuration script
+    rm -f "${MOUNT_DIR}/tmp/configure-system.sh"
+    
+    log_success "System configuration completed successfully"
+}
+
+configure_system() {
+    log_step "Configuring ArchonOS system"
+    
+    generate_fstab
+    copy_configuration_script
+    execute_system_configuration
+    
+    log_success "System configuration phase completed"
+}
+
 prepare_disk() {
     log_step "Preparing disk for ArchonOS installation"
     
@@ -588,12 +688,14 @@ build_image() {
     # Install base system using pacstrap
     install_base_system
     
+    # Configure system via arch-chroot
+    configure_system
+    
     # Placeholder for subsequent phases
-    log_info "System configuration will be implemented in Phase 6"
     log_info "Bootloader setup will be implemented in Phase 7"
     log_info "ISO creation will be implemented in Phase 8"
     
-    log_success "ArchonOS base system installation completed"
+    log_success "ArchonOS system configuration completed"
 }
 
 # Display build information
