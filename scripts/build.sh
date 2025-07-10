@@ -44,6 +44,52 @@ readonly SUBVOL_ROOT="@"             # Root subvolume (container)
 readonly MOUNT_OPTS_RO="ro,noatime,compress=zstd:1,space_cache=v2"
 readonly MOUNT_OPTS_RW="rw,noatime,compress=zstd:1,space_cache=v2"
 
+# Package configuration - Sacred Minimal Core
+readonly BASE_PACKAGES=(
+    # Core system
+    "base"
+    "linux"
+    "linux-firmware"
+    "btrfs-progs"
+    "systemd"
+    "systemd-boot"
+    
+    # Network and hardware
+    "networkmanager"
+    "bluez"
+    "bluez-utils"
+    
+    # Desktop environment (KDE Plasma minimal)
+    "plasma-desktop"
+    "plasma-wayland-session"
+    "sddm"
+    "konsole"
+    "dolphin"
+    "kate"
+    
+    # Application platforms
+    "flatpak"
+    
+    # Essential utilities
+    "sudo"
+    "which"
+    "nano"
+    "git"
+    "curl"
+    "wget"
+    "unzip"
+    "tar"
+    
+    # Development foundation (for LinuxBrew)
+    "base-devel"
+    "gcc"
+    
+    # Audio (minimal)
+    "pipewire"
+    "pipewire-pulse"
+    "pipewire-alsa"
+)
+
 # Loop device variables
 LOOP_DEVICE=""
 LOOP_DEVICE_ROOT=""
@@ -420,6 +466,102 @@ verify_subvolume_layout() {
     log_success "Subvolume layout verified successfully"
 }
 
+# System installation functions
+setup_pacman_mirrors() {
+    log_step "Setting up package mirrors"
+    
+    # Ensure we have the latest mirrorlist
+    log_info "Refreshing pacman mirrors"
+    
+    # Use reflector to get the fastest mirrors (if available)
+    if command -v reflector &> /dev/null; then
+        log_info "Using reflector to optimize mirrors"
+        reflector --country 'United States' --age 6 --protocol https --sort rate --save /etc/pacman.d/mirrorlist
+    else
+        log_info "Using default mirrorlist"
+    fi
+    
+    # Update package databases
+    pacman -Sy --noconfirm
+    
+    log_success "Package mirrors configured"
+}
+
+bootstrap_base_system() {
+    log_step "Bootstrapping ArchonOS base system"
+    
+    log_info "Installing base system with pacstrap"
+    log_info "Target: ${MOUNT_DIR}"
+    log_info "Packages: ${#BASE_PACKAGES[@]} total"
+    
+    # Show package list being installed
+    log_info "Package list:"
+    for pkg in "${BASE_PACKAGES[@]}"; do
+        log_info "  - ${pkg}"
+    done
+    
+    # Execute pacstrap with our minimal package set
+    log_info "Executing pacstrap (this may take several minutes)..."
+    if ! pacstrap "${MOUNT_DIR}" "${BASE_PACKAGES[@]}"; then
+        log_error "pacstrap failed to install base system"
+        exit 1
+    fi
+    
+    log_success "Base system bootstrapped successfully"
+}
+
+verify_installation() {
+    log_step "Verifying system installation"
+    
+    # Check critical system files exist
+    local critical_files=(
+        "${MOUNT_DIR}/usr/bin/systemd"
+        "${MOUNT_DIR}/usr/bin/plasma-desktop"
+        "${MOUNT_DIR}/usr/bin/sddm"
+        "${MOUNT_DIR}/usr/bin/konsole"
+        "${MOUNT_DIR}/usr/bin/flatpak"
+    )
+    
+    log_info "Checking critical system files:"
+    for file in "${critical_files[@]}"; do
+        if [[ -f "${file}" ]]; then
+            log_info "✓ ${file##*/} installed"
+        else
+            log_error "✗ ${file##*/} missing"
+            exit 1
+        fi
+    done
+    
+    # Check if kernel is installed
+    if [[ -f "${MOUNT_DIR}/boot/vmlinuz-linux" ]]; then
+        log_info "✓ Linux kernel installed"
+    else
+        log_error "✗ Linux kernel missing"
+        exit 1
+    fi
+    
+    # Verify package count
+    local installed_count
+    installed_count=$(arch-chroot "${MOUNT_DIR}" pacman -Q | wc -l)
+    log_info "Total packages installed: ${installed_count}"
+    
+    if [[ ${installed_count} -lt 50 ]]; then
+        log_warn "Package count seems low (${installed_count}), but continuing..."
+    fi
+    
+    log_success "System installation verified"
+}
+
+install_base_system() {
+    log_step "Installing ArchonOS base system"
+    
+    setup_pacman_mirrors
+    bootstrap_base_system
+    verify_installation
+    
+    log_success "Base system installation completed"
+}
+
 prepare_disk() {
     log_step "Preparing disk for ArchonOS installation"
     
@@ -443,13 +585,15 @@ build_image() {
     # Prepare disk, partitions, and subvolumes
     prepare_disk
     
+    # Install base system using pacstrap
+    install_base_system
+    
     # Placeholder for subsequent phases
-    log_info "System installation will be implemented in Phase 5"
     log_info "System configuration will be implemented in Phase 6"
     log_info "Bootloader setup will be implemented in Phase 7"
     log_info "ISO creation will be implemented in Phase 8"
     
-    log_success "Disk and subvolume preparation completed"
+    log_success "ArchonOS base system installation completed"
 }
 
 # Display build information
