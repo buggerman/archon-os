@@ -44,20 +44,29 @@ readonly SUBVOL_ROOT="@"             # Root subvolume (container)
 readonly MOUNT_OPTS_RO="ro,noatime,compress=zstd:1,space_cache=v2"
 readonly MOUNT_OPTS_RW="rw,noatime,compress=zstd:1,space_cache=v2"
 
-# Package configuration - Proper Arch Linux installation order
+# Package configuration following Arch Wiki guidelines
 
-# Minimal base system (installed first with pacstrap)
-readonly BASE_SYSTEM_PACKAGES=(
+# Core system packages (installed with pacstrap)
+readonly BASE_PACKAGES=(
+    # Essential base system
     "base"
     "linux"
     "linux-firmware"
     "btrfs-progs"
+    
+    # Network and essential utilities (install early per Arch Wiki)
+    "networkmanager"
+    "sudo"
+    "nano"
+    "git"
+    
+    # Development tools
+    "base-devel"
 )
 
-# Additional packages (installed after base system via chroot)
-readonly ADDITIONAL_PACKAGES=(
-    # Network and hardware
-    "networkmanager"
+# Desktop packages (installed via arch-chroot after base)
+readonly DESKTOP_PACKAGES=(
+    # Hardware support
     "bluez"
     "bluez-utils"
     
@@ -78,21 +87,15 @@ readonly ADDITIONAL_PACKAGES=(
     # Application platforms
     "flatpak"
     
-    # Essential utilities
-    "sudo"
+    # Additional utilities
     "which"
-    "nano"
-    "git"
     "curl"
     "wget"
     "unzip"
     "tar"
-    
-    # Development foundation (for LinuxBrew)
-    "base-devel"
     "gcc"
     
-    # Audio (minimal)
+    # Audio
     "pipewire"
     "pipewire-pulse"
     "pipewire-alsa"
@@ -546,84 +549,56 @@ setup_pacman_mirrors() {
 }
 
 bootstrap_base_system() {
-    log_step "Bootstrapping ArchonOS base system"
+    log_step "Bootstrapping ArchonOS base system following Arch Wiki"
     
-    # Step 1: Install minimal base system with pacstrap
-    log_info "Installing minimal base system with pacstrap"
+    # Step 1: Install base system with pacstrap (following Arch Wiki)
+    log_info "Installing base system with pacstrap"
     log_info "Target: ${MOUNT_DIR}"
-    log_info "Base packages: ${#BASE_SYSTEM_PACKAGES[@]} total"
+    log_info "Base packages: ${#BASE_PACKAGES[@]} total"
     
-    for pkg in "${BASE_SYSTEM_PACKAGES[@]}"; do
+    for pkg in "${BASE_PACKAGES[@]}"; do
         log_info "  - ${pkg}"
     done
     
-    log_info "Executing pacstrap for base system (this may take several minutes)..."
-    if ! pacstrap "${MOUNT_DIR}" "${BASE_SYSTEM_PACKAGES[@]}"; then
+    log_info "Executing pacstrap -K for base system (this may take several minutes)..."
+    if ! pacstrap -K "${MOUNT_DIR}" "${BASE_PACKAGES[@]}"; then
         log_error "pacstrap failed to install base system"
         exit 1
     fi
     
     log_success "Base system installed successfully"
     
-    # Step 2: Install desktop packages using chroot and pacman
-    log_info "Installing desktop packages via chroot"
-    log_info "Desktop packages: ${#ADDITIONAL_PACKAGES[@]} total"
+    # Step 2: Set up proper chroot environment (following Arch Wiki)
+    log_info "Setting up proper chroot environment per Arch Wiki"
     
-    # Set up basic chroot environment
-    log_info "Setting up chroot environment"
+    # Copy DNS configuration for network connectivity (critical per Arch Wiki)
+    log_info "Copying DNS configuration"
+    cp /etc/resolv.conf "${MOUNT_DIR}/etc/resolv.conf"
     
-    # Mount essential filesystems for chroot
-    mount --bind /proc "${MOUNT_DIR}/proc"
-    mount --bind /sys "${MOUNT_DIR}/sys"
-    mount --bind /dev "${MOUNT_DIR}/dev"
-    mount --bind /dev/pts "${MOUNT_DIR}/dev/pts"
+    # Step 3: Install desktop packages using arch-chroot
+    log_info "Installing desktop packages via arch-chroot"
+    log_info "Desktop packages: ${#DESKTOP_PACKAGES[@]} total"
     
-    # Ensure pacman configuration exists in chroot
-    log_info "Setting up pacman configuration in chroot"
-    if [[ ! -f "${MOUNT_DIR}/etc/pacman.conf" ]]; then
-        log_info "Copying pacman.conf to chroot"
-        cp /etc/pacman.conf "${MOUNT_DIR}/etc/pacman.conf"
-    fi
+    # Install packages in batches using arch-chroot
+    log_info "Installing desktop packages in batches..."
+    local batch_size=5
+    local batch_count=0
+    local current_batch=()
     
-    # Ensure mirrorlist exists
-    if [[ ! -f "${MOUNT_DIR}/etc/pacman.d/mirrorlist" ]]; then
-        log_info "Creating pacman.d directory and copying mirrorlist"
-        mkdir -p "${MOUNT_DIR}/etc/pacman.d"
-        cp /etc/pacman.d/mirrorlist "${MOUNT_DIR}/etc/pacman.d/mirrorlist"
-    fi
-    
-    # Update package database in chroot first
-    log_info "Updating package database in chroot"
-    if ! chroot "${MOUNT_DIR}" pacman -Sy --noconfirm; then
-        log_error "Failed to update package database in chroot"
-        # Cleanup mounts before exit
-        umount "${MOUNT_DIR}/dev/pts" || true
-        umount "${MOUNT_DIR}/dev" || true
-        umount "${MOUNT_DIR}/sys" || true  
-        umount "${MOUNT_DIR}/proc" || true
-        exit 1
-    fi
-    
-    # Install packages using simple chroot (not arch-chroot which may have issues in containers)
-    log_info "Installing desktop packages..."
-    for pkg in "${ADDITIONAL_PACKAGES[@]}"; do
-        log_info "Installing: ${pkg}"
-        if ! chroot "${MOUNT_DIR}" pacman -S --noconfirm "${pkg}"; then
-            log_error "Failed to install package: ${pkg}"
-            # Cleanup mounts before exit
-            umount "${MOUNT_DIR}/dev/pts" || true
-            umount "${MOUNT_DIR}/dev" || true
-            umount "${MOUNT_DIR}/sys" || true  
-            umount "${MOUNT_DIR}/proc" || true
-            exit 1
+    for pkg in "${DESKTOP_PACKAGES[@]}"; do
+        current_batch+=("${pkg}")
+        ((batch_count++))
+        
+        if [[ ${batch_count} -eq ${batch_size} ]] || [[ ${pkg} == "${DESKTOP_PACKAGES[-1]}" ]]; then
+            log_info "Installing batch: ${current_batch[*]}"
+            if ! arch-chroot "${MOUNT_DIR}" pacman -S --noconfirm "${current_batch[@]}"; then
+                log_error "Failed to install package batch: ${current_batch[*]}"
+                exit 1
+            fi
+            current_batch=()
+            batch_count=0
         fi
     done
-    
-    # Cleanup mounts
-    umount "${MOUNT_DIR}/dev/pts" || true
-    umount "${MOUNT_DIR}/dev" || true
-    umount "${MOUNT_DIR}/sys" || true
-    umount "${MOUNT_DIR}/proc" || true
     
     log_success "All packages installed successfully"
 }
@@ -632,10 +607,10 @@ verify_installation() {
     log_step "Verifying system installation"
     
     # Check critical packages are actually installed via pacman
-    # Note: systemd is included in base package, so we check for base instead
     local critical_packages=(
         "base"
         "linux"
+        "networkmanager"
         "plasma-desktop"
         "sddm" 
         "konsole"
