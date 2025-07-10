@@ -578,6 +578,32 @@ bootstrap_base_system() {
     mount --bind /dev "${MOUNT_DIR}/dev"
     mount --bind /dev/pts "${MOUNT_DIR}/dev/pts"
     
+    # Ensure pacman configuration exists in chroot
+    log_info "Setting up pacman configuration in chroot"
+    if [[ ! -f "${MOUNT_DIR}/etc/pacman.conf" ]]; then
+        log_info "Copying pacman.conf to chroot"
+        cp /etc/pacman.conf "${MOUNT_DIR}/etc/pacman.conf"
+    fi
+    
+    # Ensure mirrorlist exists
+    if [[ ! -f "${MOUNT_DIR}/etc/pacman.d/mirrorlist" ]]; then
+        log_info "Creating pacman.d directory and copying mirrorlist"
+        mkdir -p "${MOUNT_DIR}/etc/pacman.d"
+        cp /etc/pacman.d/mirrorlist "${MOUNT_DIR}/etc/pacman.d/mirrorlist"
+    fi
+    
+    # Update package database in chroot first
+    log_info "Updating package database in chroot"
+    if ! chroot "${MOUNT_DIR}" pacman -Sy --noconfirm; then
+        log_error "Failed to update package database in chroot"
+        # Cleanup mounts before exit
+        umount "${MOUNT_DIR}/dev/pts" || true
+        umount "${MOUNT_DIR}/dev" || true
+        umount "${MOUNT_DIR}/sys" || true  
+        umount "${MOUNT_DIR}/proc" || true
+        exit 1
+    fi
+    
     # Install packages using simple chroot (not arch-chroot which may have issues in containers)
     log_info "Installing desktop packages..."
     for pkg in "${ADDITIONAL_PACKAGES[@]}"; do
