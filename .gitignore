@@ -1,0 +1,36 @@
+# Build artifacts
+*.iso
+*.img
+*.qcow2
+build/
+dist/
+*.log
+
+# Temporary files
+*.tmp
+*.swp
+*~
+.DS_Store
+Thumbs.db
+
+# IDE/Editor files
+.vscode/
+.idea/
+*.sublime-*
+
+# OS-specific files
+*.pid
+*.sock
+*.lock
+
+# Archives and packages
+*.tar
+*.tar.gz
+*.tar.xz
+*.zip
+*.deb
+*.rpm
+
+# Mount points and loop devices
+mnt/
+loop*/

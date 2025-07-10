@@ -1,0 +1,117 @@
+name: Build ArchonOS
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release tag (e.g., v1.0.0)'
+        required: false
+        default: ''
+
+env:
+  IMAGE_NAME: archonos
+  BUILD_DIR: /tmp/archonos-build
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+      options: --privileged
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Update system and install dependencies
+      run: |
+        # Update package databases
+        pacman -Syu --noconfirm
+        
+        # Install build dependencies
+        pacman -S --noconfirm \
+          base-devel \
+          arch-install-scripts \
+          dosfstools \
+          e2fsprogs \
+          btrfs-progs \
+          parted \
+          squashfs-tools \
+          libisoburn \
+          syslinux \
+          edk2-shell \
+          git \
+          wget \
+          curl
+    
+    - name: Set up build environment
+      run: |
+        # Create build directory
+        mkdir -p ${{ env.BUILD_DIR }}
+        
+        # Set up loop device support
+        modprobe loop
+        
+        # Verify required tools
+        which pacstrap || exit 1
+        which mkfs.btrfs || exit 1
+        which parted || exit 1
+        
+        echo "Build environment ready"
+    
+    - name: Execute main build script
+      run: |
+        # Make build script executable
+        chmod +x scripts/build.sh
+        
+        # Execute build with environment variables
+        export BUILD_DIR="${{ env.BUILD_DIR }}"
+        export IMAGE_NAME="${{ env.IMAGE_NAME }}"
+        export GITHUB_RUN_NUMBER="${{ github.run_number }}"
+        export GITHUB_SHA="${{ github.sha }}"
+        
+        # Run the build
+        ./scripts/build.sh
+    
+    - name: Upload ISO artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ env.IMAGE_NAME }}-${{ github.run_number }}
+        path: ${{ env.BUILD_DIR }}/*.iso
+        retention-days: 30
+    
+    - name: Create release (if tagged)
+      if: github.event.inputs.release_tag != ''
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ github.event.inputs.release_tag }}
+        name: ArchonOS ${{ github.event.inputs.release_tag }}
+        body: |
+          # ArchonOS ${{ github.event.inputs.release_tag }}
+          
+          ## Build Information
+          - Build Number: ${{ github.run_number }}
+          - Commit SHA: ${{ github.sha }}
+          - Built on: ${{ github.event.head_commit.timestamp }}
+          
+          ## Features
+          - Immutable root filesystem (read-only)
+          - Atomic A/B updates via Btrfs subvolumes
+          - KDE Plasma on Wayland
+          - Flatpak for GUI applications
+          - LinuxBrew for CLI tools
+          
+          ## Installation
+          1. Download the ISO file
+          2. Flash to USB using dd or similar tool
+          3. Boot from USB and follow installation prompts
+          
+        files: ${{ env.BUILD_DIR }}/*.iso
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
