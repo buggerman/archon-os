@@ -49,7 +49,6 @@ jobs:
           syslinux \
           edk2-shell \
           multipath-tools \
-          isolinux \
           git \
           wget \
           curl
