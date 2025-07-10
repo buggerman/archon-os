@@ -590,6 +590,19 @@ bootstrap_base_system() {
     log_info "Installing desktop packages via chroot"
     log_info "Desktop packages: ${#DESKTOP_PACKAGES[@]} total"
     
+    # Synchronize package database in chroot environment before installing packages
+    log_info "Synchronizing package database in chroot environment"
+    if ! chroot "${MOUNT_DIR}" /bin/bash -c "pacman -Sy --noconfirm"; then
+        log_error "Failed to synchronize package database in chroot"
+        # Cleanup mounts
+        umount "${MOUNT_DIR}/dev/pts" || true
+        umount "${MOUNT_DIR}/dev" || true
+        umount "${MOUNT_DIR}/sys" || true
+        umount "${MOUNT_DIR}/proc" || true
+        exit 1
+    fi
+    log_success "Package database synchronized in chroot"
+    
     # Install packages individually for better error reporting
     log_info "Installing desktop packages individually..."
     local pkg_count=0
@@ -599,8 +612,10 @@ bootstrap_base_system() {
         ((pkg_count++))
         log_info "Installing package ${pkg_count}/${total_count}: ${pkg}"
         
-        if ! chroot "${MOUNT_DIR}" /bin/bash -c "pacman -S --noconfirm ${pkg}"; then
+        if ! chroot "${MOUNT_DIR}" /bin/bash -c "pacman -S --noconfirm --needed ${pkg}"; then
             log_error "Failed to install package: ${pkg}"
+            log_error "Attempting to show pacman error details"
+            chroot "${MOUNT_DIR}" /bin/bash -c "pacman -Q ${pkg}" 2>&1 || true
             # Cleanup mounts
             umount "${MOUNT_DIR}/dev/pts" || true
             umount "${MOUNT_DIR}/dev" || true
