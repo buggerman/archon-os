@@ -27,7 +27,7 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
     
-    - name: Initialize pacman keyring and update system
+    - name: Initialize keyring and install dependencies
       run: |
         # Initialize the pacman keyring first (required for package signature verification)
         pacman-key --init
@@ -35,10 +35,8 @@ jobs:
         
         # Update the system and refresh databases
         pacman -Syu --noconfirm
-    
-    - name: Install build dependencies
-      run: |
-        # Install build dependencies with --needed flag to prevent reinstalling up-to-date packages
+        
+        # Install build dependencies (database is now synchronized)
         pacman -S --noconfirm --needed \
           base-devel \
           arch-install-scripts \
