@@ -1054,6 +1054,46 @@ generate_iso() {
     log_info "Log file: ${xorriso_log}"
     
     # Generate ISO using xorriso with EFI boot support
+    # Prepare bootloader files
+    log_info "Preparing bootloader files"
+    
+    # Create isolinux directory
+    mkdir -p "${ISO_DIR}/isolinux"
+    
+    # Copy isolinux.bin and ldlinux.c32 from syslinux
+    log_info "Copying isolinux.bin and ldlinux.c32"
+    if [[ -f "/usr/lib/syslinux/bios/isolinux.bin" ]]; then
+        cp "/usr/lib/syslinux/bios/isolinux.bin" "${ISO_DIR}/isolinux/"
+    else
+        log_error "isolinux.bin not found in /usr/lib/syslinux/bios/"
+        exit 1
+    fi
+    
+    if [[ -f "/usr/lib/syslinux/bios/ldlinux.c32" ]]; then
+        cp "/usr/lib/syslinux/bios/ldlinux.c32" "${ISO_DIR}/isolinux/"
+    else
+        log_error "ldlinux.c32 not found in /usr/lib/syslinux/bios/"
+        exit 1
+    fi
+    
+    # Create isolinux.cfg configuration file
+    log_info "Creating isolinux.cfg"
+    cat > "${ISO_DIR}/isolinux/isolinux.cfg" << EOF
+DEFAULT archonos
+TIMEOUT 50
+PROMPT 0
+
+LABEL archonos
+    MENU LABEL ArchonOS Live Installer
+    KERNEL /archonos/vmlinuz-linux
+    APPEND initrd=/archonos/initramfs-linux.img root=/dev/ram0 ramdisk_size=2097152 archiso_label=ARCHONOS cow_spacesize=1G
+
+LABEL install
+    MENU LABEL Install ArchonOS to Hard Drive
+    KERNEL /archonos/vmlinuz-linux
+    APPEND initrd=/archonos/initramfs-linux.img root=/dev/ram0 ramdisk_size=2097152 archiso_label=ARCHONOS cow_spacesize=1G archonos_install=1
+EOF
+
     log_info "Running xorriso command..."
     if ! xorriso -as mkisofs \
         -iso-level 3 \
