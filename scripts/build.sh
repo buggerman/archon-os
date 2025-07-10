@@ -825,6 +825,211 @@ install_bootloader() {
     log_success "Bootloader installation completed"
 }
 
+# ISO creation functions
+finalize_system() {
+    log_step "Finalizing system for ISO creation"
+    
+    # Clean up package cache to reduce image size
+    log_info "Cleaning package cache"
+    arch-chroot "${MOUNT_DIR}" pacman -Scc --noconfirm
+    
+    # Clean up temporary files
+    log_info "Cleaning temporary files"
+    rm -rf "${MOUNT_DIR}/tmp"/*
+    rm -rf "${MOUNT_DIR}/var/tmp"/*
+    
+    # Update package database
+    log_info "Updating package database"
+    arch-chroot "${MOUNT_DIR}" pacman -Sy
+    
+    # Set up root password (temporary, will be changed during installation)
+    log_info "Setting temporary root password"
+    echo "root:archonos" | arch-chroot "${MOUNT_DIR}" chpasswd
+    
+    # Create version information file
+    log_info "Creating version information"
+    cat > "${MOUNT_DIR}/etc/archonos-release" << EOF
+# ArchonOS Release Information
+ARCHONOS_VERSION="${BUILD_VERSION}"
+ARCHONOS_DATE="${BUILD_DATE}"
+ARCHONOS_COMMIT="${BUILD_COMMIT}"
+ARCHONOS_ARCH="${ARCH}"
+BUILD_TYPE="atomic-immutable"
+DESKTOP_ENVIRONMENT="plasma-wayland"
+EOF
+    
+    log_success "System finalization completed"
+}
+
+create_iso_structure() {
+    log_step "Creating ISO directory structure"
+    
+    # Clean and create ISO directory
+    rm -rf "${ISO_DIR}"
+    mkdir -p "${ISO_DIR}"/{EFI/BOOT,archonos,syslinux}
+    
+    # Copy disk image to ISO
+    log_info "Copying disk image to ISO structure"
+    cp "${IMAGE_FILE}" "${ISO_DIR}/archonos/archonos.img"
+    
+    # Create EFI boot files
+    log_info "Setting up EFI boot structure"
+    
+    # Copy systemd-boot as EFI boot loader
+    if [[ -f "${MOUNT_DIR}/boot/EFI/systemd/systemd-bootx64.efi" ]]; then
+        cp "${MOUNT_DIR}/boot/EFI/systemd/systemd-bootx64.efi" "${ISO_DIR}/EFI/BOOT/BOOTX64.EFI"
+    else
+        log_error "systemd-boot EFI binary not found"
+        exit 1
+    fi
+    
+    # Copy kernel and initramfs for live boot
+    log_info "Copying kernel and initramfs"
+    cp "${MOUNT_DIR}/boot/vmlinuz-linux" "${ISO_DIR}/archonos/"
+    cp "${MOUNT_DIR}/boot/initramfs-linux.img" "${ISO_DIR}/archonos/"
+    
+    log_success "ISO structure created"
+}
+
+create_iso_boot_config() {
+    log_step "Creating ISO boot configuration"
+    
+    # Create systemd-boot configuration for ISO
+    mkdir -p "${ISO_DIR}/loader/entries"
+    
+    # Create loader configuration
+    cat > "${ISO_DIR}/loader/loader.conf" << EOF
+default  archonos-live.conf
+timeout  10
+console-mode max
+editor   no
+EOF
+    
+    # Create live boot entry
+    cat > "${ISO_DIR}/loader/entries/archonos-live.conf" << EOF
+title   ArchonOS Live Installer
+linux   /archonos/vmlinuz-linux
+initrd  /archonos/initramfs-linux.img
+options root=/dev/ram0 ramdisk_size=2097152 archiso_label=ARCHONOS cow_spacesize=1G
+EOF
+    
+    # Create installation boot entry
+    cat > "${ISO_DIR}/loader/entries/archonos-install.conf" << EOF
+title   Install ArchonOS to Hard Drive
+linux   /archonos/vmlinuz-linux
+initrd  /archonos/initramfs-linux.img
+options root=/dev/ram0 ramdisk_size=2097152 archiso_label=ARCHONOS cow_spacesize=1G archonos_install=1
+EOF
+    
+    log_success "ISO boot configuration created"
+}
+
+generate_iso() {
+    log_step "Generating bootable ISO image"
+    
+    local iso_label="ARCHONOS"
+    local iso_publisher="ArchonOS Project"
+    local iso_application="ArchonOS ${BUILD_VERSION}"
+    
+    log_info "Creating ISO with xorriso"
+    log_info "Label: ${iso_label}"
+    log_info "Publisher: ${iso_publisher}"
+    log_info "Application: ${iso_application}"
+    log_info "Output: ${ISO_FILE}"
+    
+    # Generate ISO using xorriso with EFI boot support
+    if ! xorriso -as mkisofs \
+        -iso-level 3 \
+        -o "${ISO_FILE}" \
+        -full-iso9660-filenames \
+        -volid "${iso_label}" \
+        -publisher "${iso_publisher}" \
+        -preparer "${iso_application}" \
+        -application-id "${iso_application}" \
+        -appid "${iso_application}" \
+        -eltorito-boot isolinux/isolinux.bin \
+        -eltorito-catalog isolinux/boot.cat \
+        -no-emul-boot \
+        -boot-load-size 4 \
+        -boot-info-table \
+        -eltorito-alt-boot \
+        -e EFI/BOOT/BOOTX64.EFI \
+        -no-emul-boot \
+        -isohybrid-gpt-basdat \
+        -isohybrid-apm-hfsplus \
+        "${ISO_DIR}" 2>/dev/null; then
+        
+        log_error "ISO generation failed"
+        exit 1
+    fi
+    
+    log_success "ISO image generated successfully"
+}
+
+verify_iso() {
+    log_step "Verifying ISO image"
+    
+    # Check if ISO file exists and has reasonable size
+    if [[ ! -f "${ISO_FILE}" ]]; then
+        log_error "ISO file not found: ${ISO_FILE}"
+        exit 1
+    fi
+    
+    local iso_size
+    iso_size=$(stat -f%z "${ISO_FILE}" 2>/dev/null || stat -c%s "${ISO_FILE}" 2>/dev/null)
+    local iso_size_mb=$((iso_size / 1024 / 1024))
+    
+    log_info "ISO file: ${ISO_FILE}"
+    log_info "ISO size: ${iso_size_mb}MB"
+    
+    # Verify minimum size (should be at least 1GB for a complete system)
+    if [[ ${iso_size_mb} -lt 1024 ]]; then
+        log_warn "ISO size seems small (${iso_size_mb}MB), but continuing..."
+    fi
+    
+    # Verify ISO structure
+    log_info "Verifying ISO structure with file command"
+    file "${ISO_FILE}" | grep -q "ISO 9660" || {
+        log_error "Generated file is not a valid ISO"
+        exit 1
+    }
+    
+    log_success "ISO verification completed"
+}
+
+create_checksums() {
+    log_step "Creating checksums"
+    
+    local checksum_file="${BUILD_DIR}/checksums.txt"
+    
+    log_info "Generating SHA256 checksums"
+    
+    # Generate checksums for ISO and disk image
+    (
+        cd "${BUILD_DIR}"
+        sha256sum "$(basename "${ISO_FILE}")" > "${checksum_file}"
+        sha256sum "$(basename "${IMAGE_FILE}")" >> "${checksum_file}"
+    )
+    
+    log_info "Checksums written to: ${checksum_file}"
+    cat "${checksum_file}"
+    
+    log_success "Checksums created"
+}
+
+create_iso() {
+    log_step "Creating ArchonOS ISO image"
+    
+    finalize_system
+    create_iso_structure
+    create_iso_boot_config
+    generate_iso
+    verify_iso
+    create_checksums
+    
+    log_success "ISO creation completed"
+}
+
 prepare_disk() {
     log_step "Preparing disk for ArchonOS installation"
     
@@ -857,10 +1062,10 @@ build_image() {
     # Install and configure bootloader
     install_bootloader
     
-    # Placeholder for subsequent phases
-    log_info "ISO creation will be implemented in Phase 8"
+    # Create bootable ISO image
+    create_iso
     
-    log_success "ArchonOS bootable system completed"
+    log_success "ArchonOS build completed successfully"
 }
 
 # Display build information

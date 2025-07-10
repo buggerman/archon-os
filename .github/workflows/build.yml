@@ -77,11 +77,13 @@ jobs:
         # Run the build
         ./scripts/build.sh
     
-    - name: Upload ISO artifact
+    - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
         name: ${{ env.IMAGE_NAME }}-${{ github.run_number }}
-        path: ${{ env.BUILD_DIR }}/*.iso
+        path: |
+          ${{ env.BUILD_DIR }}/*.iso
+          ${{ env.BUILD_DIR }}/checksums.txt
         retention-days: 30
     
     - name: Create release (if tagged)
@@ -93,24 +95,41 @@ jobs:
         body: |
           # ArchonOS ${{ github.event.inputs.release_tag }}
           
-          ## Build Information
-          - Build Number: ${{ github.run_number }}
-          - Commit SHA: ${{ github.sha }}
-          - Built on: ${{ github.event.head_commit.timestamp }}
+          An atomic, immutable Arch Linux distribution with KDE Plasma on Wayland.
           
-          ## Features
-          - Immutable root filesystem (read-only)
-          - Atomic A/B updates via Btrfs subvolumes
-          - KDE Plasma on Wayland
-          - Flatpak for GUI applications
-          - LinuxBrew for CLI tools
+          ## Build Information
+          - **Build Number**: ${{ github.run_number }}
+          - **Commit SHA**: ${{ github.sha }}
+          - **Built on**: ${{ github.event.head_commit.timestamp }}
+          - **Architecture**: x86_64
+          
+          ## Core Features
+          - 🔒 **Immutable Root Filesystem**: Read-only system partition prevents corruption
+          - ⚛️ **Atomic A/B Updates**: Instant updates with automatic rollback on failure
+          - 🖥️ **KDE Plasma on Wayland**: Modern desktop environment with latest display technology
+          - 📦 **Flatpak Integration**: Sandboxed GUI applications from Flathub
+          - 🛠️ **LinuxBrew Ready**: CLI tools and development environments via LinuxBrew
+          - 🗂️ **Btrfs Subvolumes**: Advanced filesystem features with compression
+          - 🚀 **systemd-boot**: Fast, secure UEFI bootloader
           
           ## Installation
-          1. Download the ISO file
-          2. Flash to USB using dd or similar tool
-          3. Boot from USB and follow installation prompts
+          1. **Download**: Get the ISO file below
+          2. **Verify**: Check SHA256 sum against checksums.txt
+          3. **Flash**: Write to USB using `dd` or similar tool
+          4. **Boot**: Start from USB and follow installation prompts
           
-        files: ${{ env.BUILD_DIR }}/*.iso
+          ## Default Credentials
+          - **Username**: `archon` 
+          - **Password**: `archon` (must be changed on first login)
+          - **Root**: `archonos` (temporary, set during installation)
+          
+          ## Files
+          - `archonos-*.iso`: Bootable installation image
+          - `checksums.txt`: SHA256 verification checksums
+          
+        files: |
+          ${{ env.BUILD_DIR }}/*.iso
+          ${{ env.BUILD_DIR }}/checksums.txt
         draft: false
         prerelease: false
       env:
