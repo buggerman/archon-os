@@ -571,12 +571,19 @@ bootstrap_base_system() {
     # Step 2: Set up proper chroot environment (following Arch Wiki)
     log_info "Setting up proper chroot environment per Arch Wiki"
     
+    # Mount API filesystems (required for chroot per Arch Wiki)
+    log_info "Mounting API filesystems for chroot"
+    mount -t proc /proc "${MOUNT_DIR}/proc"
+    mount -t sysfs /sys "${MOUNT_DIR}/sys" 
+    mount --bind /dev "${MOUNT_DIR}/dev"
+    mount --bind /dev/pts "${MOUNT_DIR}/dev/pts"
+    
     # Copy DNS configuration for network connectivity (critical per Arch Wiki)
     log_info "Copying DNS configuration"
     cp /etc/resolv.conf "${MOUNT_DIR}/etc/resolv.conf"
     
-    # Step 3: Install desktop packages using arch-chroot
-    log_info "Installing desktop packages via arch-chroot"
+    # Step 3: Install desktop packages using traditional chroot (arch-chroot may not work in containers)
+    log_info "Installing desktop packages via chroot"
     log_info "Desktop packages: ${#DESKTOP_PACKAGES[@]} total"
     
     # Install packages individually for better error reporting
@@ -588,13 +595,25 @@ bootstrap_base_system() {
         ((pkg_count++))
         log_info "Installing package ${pkg_count}/${total_count}: ${pkg}"
         
-        if ! arch-chroot "${MOUNT_DIR}" pacman -S --noconfirm "${pkg}"; then
+        if ! chroot "${MOUNT_DIR}" /bin/bash -c "pacman -S --noconfirm ${pkg}"; then
             log_error "Failed to install package: ${pkg}"
+            # Cleanup mounts
+            umount "${MOUNT_DIR}/dev/pts" || true
+            umount "${MOUNT_DIR}/dev" || true
+            umount "${MOUNT_DIR}/sys" || true
+            umount "${MOUNT_DIR}/proc" || true
             exit 1
         fi
         
         log_info "✓ Successfully installed: ${pkg}"
     done
+    
+    # Cleanup mounts
+    log_info "Cleaning up API filesystem mounts"
+    umount "${MOUNT_DIR}/dev/pts" || true
+    umount "${MOUNT_DIR}/dev" || true  
+    umount "${MOUNT_DIR}/sys" || true
+    umount "${MOUNT_DIR}/proc" || true
     
     log_success "All packages installed successfully"
 }
