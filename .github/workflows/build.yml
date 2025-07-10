@@ -27,13 +27,19 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
     
-    - name: Update system and install dependencies
+    - name: Initialize pacman keyring and update system
       run: |
-        # Update package databases
-        pacman -Syu --noconfirm
+        # Initialize the pacman keyring first (required for package signature verification)
+        pacman-key --init
+        pacman-key --populate archlinux
         
-        # Install build dependencies
-        pacman -S --noconfirm \
+        # Update the system and refresh databases
+        pacman -Syu --noconfirm
+    
+    - name: Install build dependencies
+      run: |
+        # Install build dependencies with --needed flag to prevent reinstalling up-to-date packages
+        pacman -S --noconfirm --needed \
           base-devel \
           arch-install-scripts \
           dosfstools \
