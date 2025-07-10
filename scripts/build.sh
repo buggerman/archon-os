@@ -638,17 +638,12 @@ verify_installation() {
     
     log_info "Checking critical packages installation:"
     for pkg in "${critical_packages[@]}"; do
-        # Check if package database entry exists (more reliable than chroot in containers)
-        if [[ -f "${MOUNT_DIR}/var/lib/pacman/local/${pkg}"-*/desc ]]; then
-            log_info "✓ ${pkg} installed"
-        else
-            log_error "✗ ${pkg} missing (no pacman database entry)"
-            # Debug: list what packages are actually installed
-            log_info "Looking for ${pkg} in /var/lib/pacman/local/:"
-            ls "${MOUNT_DIR}/var/lib/pacman/local/" | grep -i "${pkg}" || log_info "No matches found"
-            log_info "All installed packages:"
-            ls "${MOUNT_DIR}/var/lib/pacman/local/" | head -20
+        # Check if package is installed using pacman query
+        if ! arch-chroot "${MOUNT_DIR}" pacman -Q "${pkg}" &>/dev/null; then
+            log_error "✗ ${pkg} missing"
             exit 1
+        else
+            log_info "✓ ${pkg} installed"
         fi
     done
     
