@@ -579,25 +579,21 @@ bootstrap_base_system() {
     log_info "Installing desktop packages via arch-chroot"
     log_info "Desktop packages: ${#DESKTOP_PACKAGES[@]} total"
     
-    # Install packages in batches using arch-chroot
-    log_info "Installing desktop packages in batches..."
-    local batch_size=5
-    local batch_count=0
-    local current_batch=()
+    # Install packages individually for better error reporting
+    log_info "Installing desktop packages individually..."
+    local pkg_count=0
+    local total_count=${#DESKTOP_PACKAGES[@]}
     
     for pkg in "${DESKTOP_PACKAGES[@]}"; do
-        current_batch+=("${pkg}")
-        ((batch_count++))
+        ((pkg_count++))
+        log_info "Installing package ${pkg_count}/${total_count}: ${pkg}"
         
-        if [[ ${batch_count} -eq ${batch_size} ]] || [[ ${pkg} == "${DESKTOP_PACKAGES[-1]}" ]]; then
-            log_info "Installing batch: ${current_batch[*]}"
-            if ! arch-chroot "${MOUNT_DIR}" pacman -S --noconfirm "${current_batch[@]}"; then
-                log_error "Failed to install package batch: ${current_batch[*]}"
-                exit 1
-            fi
-            current_batch=()
-            batch_count=0
+        if ! arch-chroot "${MOUNT_DIR}" pacman -S --noconfirm "${pkg}"; then
+            log_error "Failed to install package: ${pkg}"
+            exit 1
         fi
+        
+        log_info "✓ Successfully installed: ${pkg}"
     done
     
     log_success "All packages installed successfully"
