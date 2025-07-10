@@ -157,6 +157,11 @@ cleanup_loop_devices() {
         umount "${WORK_DIR}/verify_temp" || log_warn "Failed to unmount verification mount"
     fi
     
+    # Clean up kpartx mappings if they exist
+    if [[ -n "${LOOP_DEVICE}" ]]; then
+        kpartx -dv "${LOOP_DEVICE}" 2>/dev/null || true
+    fi
+    
     # Detach loop devices
     if [[ -n "${LOOP_DEVICE}" ]]; then
         losetup -d "${LOOP_DEVICE}" || log_warn "Failed to detach loop device ${LOOP_DEVICE}"
@@ -204,6 +209,7 @@ check_dependencies() {
         "btrfs"
         "parted"
         "losetup"
+        "kpartx"
         "mount"
         "umount"
         "findmnt"
@@ -331,9 +337,34 @@ setup_loop_devices() {
     # Wait for partition devices to be available
     sleep 2
     
-    # Set up loop devices for individual partitions
+    # First, try standard partition device naming
     LOOP_DEVICE_EFI="${LOOP_DEVICE}p1"
     LOOP_DEVICE_ROOT="${LOOP_DEVICE}p2"
+    
+    # Check if partition devices exist naturally
+    if [[ ! -b "${LOOP_DEVICE_EFI}" ]]; then
+        log_info "Standard partition devices not found, using kpartx"
+        
+        # Use kpartx to create partition device mappings
+        if ! kpartx -av "${LOOP_DEVICE}"; then
+            log_error "kpartx failed to create partition devices"
+            exit 1
+        fi
+        
+        # kpartx creates devices in /dev/mapper/ with different naming
+        local loop_name
+        loop_name=$(basename "${LOOP_DEVICE}")
+        LOOP_DEVICE_EFI="/dev/mapper/${loop_name}p1"
+        LOOP_DEVICE_ROOT="/dev/mapper/${loop_name}p2"
+        
+        log_info "Using kpartx partition devices:"
+        log_info "  EFI: ${LOOP_DEVICE_EFI}"
+        log_info "  Root: ${LOOP_DEVICE_ROOT}"
+    else
+        log_info "Using standard partition devices:"
+        log_info "  EFI: ${LOOP_DEVICE_EFI}"
+        log_info "  Root: ${LOOP_DEVICE_ROOT}"
+    fi
     
     # Verify partition devices exist
     if [[ ! -b "${LOOP_DEVICE_EFI}" ]]; then
@@ -345,9 +376,6 @@ setup_loop_devices() {
         log_error "Root partition device not found: ${LOOP_DEVICE_ROOT}"
         exit 1
     fi
-    
-    log_info "EFI partition: ${LOOP_DEVICE_EFI}"
-    log_info "Root partition: ${LOOP_DEVICE_ROOT}"
     
     log_success "Loop devices configured successfully"
 }
