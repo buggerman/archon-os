@@ -565,7 +565,7 @@ bootstrap_base_system() {
     done
     
     log_info "Executing pacstrap -K for base system (this may take several minutes)..."
-    if ! pacstrap -K --noconfirm "${MOUNT_DIR}" "${BASE_PACKAGES[@]}"; then
+    if ! pacstrap -K "${MOUNT_DIR}" "${BASE_PACKAGES[@]}"; then
         log_error "pacstrap failed to install base system"
         exit 1
     fi
