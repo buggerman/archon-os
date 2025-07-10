@@ -1098,21 +1098,28 @@ generate_iso() {
     # Create isolinux directory
     mkdir -p "${ISO_DIR}/isolinux"
     
-    # Copy isolinux.bin and ldlinux.c32 from syslinux
-    log_info "Copying isolinux.bin and ldlinux.c32"
-    if [[ -f "/usr/lib/syslinux/bios/isolinux.bin" ]]; then
-        cp "/usr/lib/syslinux/bios/isolinux.bin" "${ISO_DIR}/isolinux/"
-    else
-        log_error "isolinux.bin not found in /usr/lib/syslinux/bios/"
-        exit 1
-    fi
+    # Copy all required syslinux modules
+    log_info "Copying syslinux bootloader modules"
     
-    if [[ -f "/usr/lib/syslinux/bios/ldlinux.c32" ]]; then
-        cp "/usr/lib/syslinux/bios/ldlinux.c32" "${ISO_DIR}/isolinux/"
-    else
-        log_error "ldlinux.c32 not found in /usr/lib/syslinux/bios/"
-        exit 1
-    fi
+    # Required syslinux modules for isolinux
+    local syslinux_modules=(
+        "isolinux.bin"
+        "ldlinux.c32"
+        "menu.c32"
+        "libutil.c32"
+        "libcom32.c32"
+    )
+    
+    for module in "${syslinux_modules[@]}"; do
+        local module_path="/usr/lib/syslinux/bios/${module}"
+        if [[ -f "$module_path" ]]; then
+            cp "$module_path" "${ISO_DIR}/isolinux/"
+            log_info "Copied ${module}"
+        else
+            log_error "${module} not found at ${module_path}"
+            exit 1
+        fi
+    done
     
     # Create isolinux.cfg configuration file for installation ISO
     log_info "Creating isolinux.cfg"
