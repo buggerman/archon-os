@@ -385,8 +385,8 @@ format_efi_partition() {
     
     log_info "Creating FAT32 filesystem on ${LOOP_DEVICE_EFI}"
     
-    # Format EFI partition as FAT32
-    mkfs.fat -F 32 -n "ARCHONOS_EFI" "${LOOP_DEVICE_EFI}"
+    # Format EFI partition as FAT32 (label max 11 chars)
+    mkfs.fat -F 32 -n "ARCHONOS" "${LOOP_DEVICE_EFI}"
     
     log_success "EFI partition formatted successfully"
 }
