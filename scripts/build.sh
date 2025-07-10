@@ -572,6 +572,10 @@ bootstrap_base_system() {
     
     log_success "Base system installed successfully"
     
+    # Copy pacman.conf to chroot environment before any chroot package installations
+    log_info "Copying pacman.conf to chroot environment"
+    cp /etc/pacman.conf "${MOUNT_DIR}/etc/pacman.conf"
+    
     # Step 2: Set up proper chroot environment (following Arch Wiki)
     log_info "Setting up proper chroot environment per Arch Wiki"
     
