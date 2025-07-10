@@ -53,13 +53,26 @@ jobs:
         # Create build directory
         mkdir -p ${{ env.BUILD_DIR }}
         
-        # Set up loop device support
-        modprobe loop
+        # Set up loop device support (ignore errors in container environments)
+        modprobe loop || echo "Loop module loading failed, assuming built-in or available"
+        
+        # Verify loop device availability
+        if [ ! -e /dev/loop0 ]; then
+          echo "Creating loop device nodes"
+          for i in {0..7}; do
+            mknod /dev/loop$i b 7 $i 2>/dev/null || true
+          done
+        fi
         
         # Verify required tools
         which pacstrap || exit 1
         which mkfs.btrfs || exit 1
         which parted || exit 1
+        which losetup || exit 1
+        
+        # Test loop device functionality
+        echo "Testing loop device functionality"
+        losetup --find || echo "Warning: losetup may have issues, but continuing"
         
         echo "Build environment ready"
     

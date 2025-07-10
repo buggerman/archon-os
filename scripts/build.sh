@@ -254,7 +254,22 @@ validate_environment() {
     
     # Check if loop device support is available
     if ! modprobe loop 2>/dev/null; then
-        log_warn "Could not load loop module, assuming it's built-in"
+        log_warn "Could not load loop module, assuming it's built-in or available"
+    fi
+    
+    # Ensure loop device nodes exist (for container environments)
+    if [[ ! -e /dev/loop0 ]]; then
+        log_info "Creating loop device nodes for container environment"
+        for i in {0..7}; do
+            mknod "/dev/loop${i}" b 7 "${i}" 2>/dev/null || true
+        done
+    fi
+    
+    # Test loop device functionality
+    if ! losetup --find >/dev/null 2>&1; then
+        log_error "Loop device functionality not available"
+        log_error "This script requires loop device support"
+        exit 1
     fi
     
     log_success "Environment validation passed"
