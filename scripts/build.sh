@@ -588,8 +588,10 @@ verify_installation() {
         else
             log_error "✗ ${pkg} missing (no pacman database entry)"
             # Debug: list what packages are actually installed
-            log_info "Installed packages in /var/lib/pacman/local/:"
-            ls "${MOUNT_DIR}/var/lib/pacman/local/" | head -10
+            log_info "Looking for ${pkg} in /var/lib/pacman/local/:"
+            ls "${MOUNT_DIR}/var/lib/pacman/local/" | grep -i "${pkg}" || log_info "No matches found"
+            log_info "All installed packages:"
+            ls "${MOUNT_DIR}/var/lib/pacman/local/" | head -20
             exit 1
         fi
     done
