@@ -18,7 +18,7 @@ readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly PROJECT_ROOT="$(dirname "${SCRIPT_DIR}")"
 readonly BUILD_DIR="${BUILD_DIR:-/tmp/archonos-build}"
 readonly IMAGE_NAME="${IMAGE_NAME:-archonos}"
-readonly DISK_SIZE="4G"
+readonly DISK_SIZE="8G"
 readonly ARCH="x86_64"
 
 # Build metadata
