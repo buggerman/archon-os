@@ -91,7 +91,6 @@ readonly DESKTOP_PACKAGES=(
     
     # Performance/gaming packages (official repos only)
     "gamemode"
-    "lib32-gamemode"
     "irqbalance"
     "zram-generator"
     
