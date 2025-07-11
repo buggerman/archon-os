@@ -34,3 +34,6 @@ Thumbs.db
 # Mount points and loop devices
 mnt/
 loop*/
+
+# Claude session notes
+CLAUDE.md
