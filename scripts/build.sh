@@ -612,7 +612,7 @@ verify_installation() {
         "sed"
         "tar"
         "util-linux"
-        "linux"
+        "linux-zen"
         "networkmanager"
         "plasma-desktop"
         "sddm" 
