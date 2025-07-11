@@ -101,7 +101,6 @@ readonly DESKTOP_PACKAGES=(
     "intel-media-driver"
     "xf86-video-amdgpu"
     "vulkan-radeon"
-    "nvidia-dkms"
     
     # Audio
     "pipewire"
