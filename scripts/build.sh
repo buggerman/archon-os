@@ -97,24 +97,18 @@ readonly DESKTOP_PACKAGES=(
     
     # GPU drivers (essential)
     "mesa"
-    "lib32-mesa"
     "vulkan-icd-loader"
-    "lib32-vulkan-icd-loader"
     "vulkan-mesa-layers"
-    "lib32-vulkan-mesa-layers"
     "intel-media-driver"
     "xf86-video-amdgpu"
     "vulkan-radeon"
-    "lib32-vulkan-radeon"
     "nvidia-dkms"
-    "lib32-nvidia-utils"
     
     # Audio
     "pipewire"
     "pipewire-pulse"
     "pipewire-alsa"
     "pipewire-jack"
-    "lib32-pipewire"
     "wireplumber"
     
     # Snapshot system
@@ -138,7 +132,7 @@ readonly DESKTOP_PACKAGES=(
     "git"
     "vim"
     "htop"
-    "neofetch"
+    "fastfetch"
     "lm_sensors"
     "thermald"
     "cpupower"
