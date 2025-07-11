@@ -33,24 +33,22 @@ readonly ROOT_PARTITION_TYPE="8304"  # Linux root (x86-64)
 readonly EFI_PARTITION_TYPE="ef00"   # EFI System Partition
 
 # Btrfs subvolume configuration
-readonly SUBVOL_OS_A="@os_a"         # Primary OS subvolume (active)
-readonly SUBVOL_OS_B="@os_b"         # Secondary OS subvolume (update target)
+readonly SUBVOL_ROOT="@"             # Root subvolume
 readonly SUBVOL_HOME="@home"         # User data persistence
 readonly SUBVOL_LOG="@log"           # System logs isolation
 readonly SUBVOL_SWAP="@swap"         # Swap file containment
-readonly SUBVOL_ROOT="@"             # Root subvolume (container)
 
-# Mount options for immutable root filesystem
-readonly MOUNT_OPTS_RO="ro,noatime,compress=zstd:1,space_cache=v2"
+# Mount options for Btrfs filesystem
 readonly MOUNT_OPTS_RW="rw,noatime,compress=zstd:1,space_cache=v2"
 
 # Package configuration following Arch Wiki guidelines
 
-# Core system packages (installed with pacstrap)
+# Core system packages (installed with pacstrap) - Garuda Linux approach
 readonly BASE_PACKAGES=(
     # Essential base system
     "base"
-    "linux"
+    "linux-zen"        # Garuda uses linux-zen kernel
+    "linux-zen-headers"
     "linux-firmware"
     "btrfs-progs"
     
@@ -68,13 +66,13 @@ readonly BASE_PACKAGES=(
     "mkinitcpio"      # Initramfs generator
 )
 
-# Desktop packages (installed via arch-chroot after base)
+# Desktop packages (installed via arch-chroot after base) - Garuda Linux approach
 readonly DESKTOP_PACKAGES=(
     # Hardware support
     "bluez"
     "bluez-utils"
     
-    # Desktop environment (KDE Plasma minimal)
+    # Desktop environment (KDE Plasma)
     "plasma-desktop"
     "plasma-workspace"
     "kwin"
@@ -91,18 +89,68 @@ readonly DESKTOP_PACKAGES=(
     # Application platforms
     "flatpak"
     
-    # Additional utilities
+    # Garuda's performance/gaming packages
+    "gamemode"
+    "lib32-gamemode"
+    "mangohud"
+    "lib32-mangohud"
+    "irqbalance"
+    "zram-generator"
+    "ananicy-cpp"
+    "memavaild"
+    "nohang"
+    "preload"
+    "prelockd"
+    "uresourced"
+    
+    # GPU drivers (essential)
+    "mesa"
+    "lib32-mesa"
+    "vulkan-icd-loader"
+    "lib32-vulkan-icd-loader"
+    "vulkan-mesa-layers"
+    "lib32-vulkan-mesa-layers"
+    "intel-media-driver"
+    "xf86-video-amdgpu"
+    "vulkan-radeon"
+    "lib32-vulkan-radeon"
+    "nvidia-dkms"
+    "lib32-nvidia-utils"
+    
+    # Audio
+    "pipewire"
+    "pipewire-pulse"
+    "pipewire-alsa"
+    "pipewire-jack"
+    "lib32-pipewire"
+    "wireplumber"
+    
+    # Snapshot system - Garuda uses Timeshift
+    "timeshift"
+    "timeshift-autosnap"
+    "grub-btrfs"
+    
+    # Essential fonts
+    "ttf-dejavu"
+    "ttf-liberation"
+    "noto-fonts"
+    "noto-fonts-emoji"
+    
+    # Minimal utilities
     "which"
     "curl"
     "wget"
     "unzip"
     "tar"
     "gcc"
-    
-    # Audio
-    "pipewire"
-    "pipewire-pulse"
-    "pipewire-alsa"
+    "git"
+    "vim"
+    "htop"
+    "neofetch"
+    "lm_sensors"
+    "thermald"
+    "cpupower"
+    "fwupd"
 )
 
 # Loop device variables
@@ -440,19 +488,18 @@ create_btrfs_subvolumes() {
     log_info "Mounting Btrfs root filesystem"
     mount "${LOOP_DEVICE_ROOT}" "${temp_mount}"
     
-    # Create all required subvolumes
-    log_info "Creating atomic A/B subvolumes"
-    btrfs subvolume create "${temp_mount}/${SUBVOL_OS_A}"
-    btrfs subvolume create "${temp_mount}/${SUBVOL_OS_B}"
+    # Create root subvolume
+    log_info "Creating root subvolume"
+    btrfs subvolume create "${temp_mount}/${SUBVOL_ROOT}"
     
     log_info "Creating persistent data subvolumes"
     btrfs subvolume create "${temp_mount}/${SUBVOL_HOME}"
     btrfs subvolume create "${temp_mount}/${SUBVOL_LOG}"
     btrfs subvolume create "${temp_mount}/${SUBVOL_SWAP}"
     
-    # Set default subvolume to @os_a for initial boot
+    # Set default subvolume to @ for boot
     local subvol_id
-    subvol_id=$(btrfs subvolume list "${temp_mount}" | grep "${SUBVOL_OS_A}" | awk '{print $2}')
+    subvol_id=$(btrfs subvolume list "${temp_mount}" | grep "path ${SUBVOL_ROOT}$" | awk '{print $2}')
     btrfs subvolume set-default "${subvol_id}" "${temp_mount}"
     
     log_info "Subvolume structure:"
@@ -468,9 +515,9 @@ create_btrfs_subvolumes() {
 mount_subvolumes_for_install() {
     log_step "Mounting subvolumes for system installation"
     
-    # Mount the active OS subvolume as root
-    log_info "Mounting ${SUBVOL_OS_A} as root filesystem"
-    mount -o "${MOUNT_OPTS_RW},subvol=${SUBVOL_OS_A}" "${LOOP_DEVICE_ROOT}" "${MOUNT_DIR}"
+    # Mount the root subvolume as root
+    log_info "Mounting ${SUBVOL_ROOT} as root filesystem"
+    mount -o "${MOUNT_OPTS_RW},subvol=${SUBVOL_ROOT}" "${LOOP_DEVICE_ROOT}" "${MOUNT_DIR}"
     
     # Create mount points for other subvolumes and EFI
     mkdir -p "${MOUNT_DIR}"/{boot,home,var/log,swap}
@@ -501,7 +548,7 @@ verify_subvolume_layout() {
     mount "${LOOP_DEVICE_ROOT}" "${temp_mount}"
     
     log_info "Subvolume verification:"
-    local subvolumes=("${SUBVOL_OS_A}" "${SUBVOL_OS_B}" "${SUBVOL_HOME}" "${SUBVOL_LOG}" "${SUBVOL_SWAP}")
+    local subvolumes=("${SUBVOL_ROOT}" "${SUBVOL_HOME}" "${SUBVOL_LOG}" "${SUBVOL_SWAP}")
     
     # Get list of subvolumes from btrfs
     local subvol_list
@@ -648,10 +695,10 @@ verify_installation() {
     done
     
     # Check if kernel is installed
-    if [[ -f "${MOUNT_DIR}/boot/vmlinuz-linux" ]]; then
-        log_info "✓ Linux kernel installed"
+    if [[ -f "${MOUNT_DIR}/boot/vmlinuz-linux-zen" ]]; then
+        log_info "✓ Linux Zen kernel installed"
     else
-        log_error "✗ Linux kernel missing"
+        log_error "✗ Linux Zen kernel missing"
         exit 1
     fi
     
@@ -679,9 +726,9 @@ install_base_system() {
 
 # System configuration functions
 generate_fstab() {
-    log_step "Generating fstab with immutable root configuration"
+    log_step "Generating fstab with Btrfs subvolumes"
     
-    log_info "Creating fstab with read-only root filesystem"
+    log_info "Creating fstab with Btrfs subvolumes"
     
     # Get filesystem UUIDs
     local root_uuid efi_uuid
@@ -693,16 +740,16 @@ generate_fstab() {
     
     # Create fstab with proper mount options
     cat > "${MOUNT_DIR}/etc/fstab" << EOF
-# ArchonOS fstab - Immutable Root Filesystem Configuration
+# ArchonOS fstab - Btrfs Subvolume Configuration
 # <file system>                               <dir>      <type>  <options>                                           <dump>  <pass>
 
-# Root subvolume (read-only for immutability)
-UUID=${root_uuid}                             /          btrfs   ${MOUNT_OPTS_RO},subvol=${SUBVOL_OS_A}              0       1
+# Root subvolume
+UUID=${root_uuid}                             /          btrfs   ${MOUNT_OPTS_RW},subvol=${SUBVOL_ROOT}              0       1
 
 # EFI System Partition
 UUID=${efi_uuid}                              /boot      vfat    rw,relatime,fmask=0022,dmask=0022,codepage=437,iocharset=ascii,shortname=mixed,utf8,errors=remount-ro  0  2
 
-# Persistent data subvolumes (read-write)
+# Persistent data subvolumes
 UUID=${root_uuid}                             /home      btrfs   ${MOUNT_OPTS_RW},subvol=${SUBVOL_HOME}              0       2
 UUID=${root_uuid}                             /var/log   btrfs   ${MOUNT_OPTS_RW},subvol=${SUBVOL_LOG}               0       2
 UUID=${root_uuid}                             /swap      btrfs   ${MOUNT_OPTS_RW},subvol=${SUBVOL_SWAP}              0       2
@@ -720,17 +767,35 @@ copy_configuration_script() {
     
     local config_script="${PROJECT_ROOT}/scripts/configure-system.sh"
     local target_script="${MOUNT_DIR}/configure-system.sh"
+    local desktop_script="${PROJECT_ROOT}/scripts/configure-desktop.sh"
+    local target_desktop_script="${MOUNT_DIR}/configure-desktop.sh"
+    local garuda_script="${PROJECT_ROOT}/scripts/garuda-optimizations.sh"
+    local target_garuda_script="${MOUNT_DIR}/garuda-optimizations.sh"
     
     if [[ ! -f "${config_script}" ]]; then
         log_error "Configuration script not found: ${config_script}"
         exit 1
     fi
     
-    log_info "Copying configuration script to chroot environment"
-    cp "${config_script}" "${target_script}"
-    chmod +x "${target_script}"
+    if [[ ! -f "${desktop_script}" ]]; then
+        log_error "Desktop configuration script not found: ${desktop_script}"
+        exit 1
+    fi
     
-    log_success "Configuration script copied successfully"
+    if [[ ! -f "${garuda_script}" ]]; then
+        log_error "Garuda optimizations script not found: ${garuda_script}"
+        exit 1
+    fi
+    
+    log_info "Copying configuration scripts to chroot environment"
+    cp "${config_script}" "${target_script}"
+    cp "${desktop_script}" "${target_desktop_script}"
+    cp "${garuda_script}" "${target_garuda_script}"
+    chmod +x "${target_script}"
+    chmod +x "${target_desktop_script}"
+    chmod +x "${target_garuda_script}"
+    
+    log_success "Configuration scripts copied successfully"
 }
 
 execute_system_configuration() {
@@ -782,8 +847,10 @@ EOF
     chmod +x "${MOUNT_DIR}/home/archon/Desktop/install-archonos.desktop"
     arch-chroot "${MOUNT_DIR}" chown -R archon:archon /home/archon/Desktop 2>/dev/null || true
     
-    # Clean up configuration script
+    # Clean up configuration scripts
     rm -f "${MOUNT_DIR}/configure-system.sh"
+    rm -f "${MOUNT_DIR}/configure-desktop.sh"
+    rm -f "${MOUNT_DIR}/garuda-optimizations.sh"
     
     log_success "System configuration completed successfully"
 }
@@ -828,32 +895,24 @@ create_boot_entries() {
     kernel_version=$(ls "${MOUNT_DIR}/usr/lib/modules/" | head -n1)
     log_info "Detected kernel version: ${kernel_version}"
     
-    # Create primary boot entry for @os_a
-    log_info "Creating primary boot entry (os_a)"
+    # Create primary boot entry
+    log_info "Creating primary boot entry"
     cat > "${entries_dir}/archonos.conf" << EOF
 title   ArchonOS
-linux   /vmlinuz-linux
-initrd  /initramfs-linux.img
-options root=UUID=${root_uuid} rootflags=subvol=${SUBVOL_OS_A} rw quiet splash
+linux   /vmlinuz-linux-zen
+initrd  /initramfs-linux-zen.img
+options root=UUID=${root_uuid} rootflags=subvol=${SUBVOL_ROOT} rw quiet splash loglevel=3 rd.udev.log_priority=3 vt.global_cursor_default=0 systemd.unified_cgroup_hierarchy=1 sysrq_always_enabled=1 mitigations=off nowatchdog
 EOF
     
     # Create fallback boot entry
     log_info "Creating fallback boot entry"
     cat > "${entries_dir}/archonos-fallback.conf" << EOF
 title   ArchonOS (fallback initramfs)
-linux   /vmlinuz-linux
-initrd  /initramfs-linux-fallback.img
-options root=UUID=${root_uuid} rootflags=subvol=${SUBVOL_OS_A} rw
+linux   /vmlinuz-linux-zen
+initrd  /initramfs-linux-zen-fallback.img
+options root=UUID=${root_uuid} rootflags=subvol=${SUBVOL_ROOT} rw quiet splash loglevel=3 rd.udev.log_priority=3 vt.global_cursor_default=0 systemd.unified_cgroup_hierarchy=1 sysrq_always_enabled=1 mitigations=off nowatchdog
 EOF
     
-    # Create A/B update boot entry for @os_b (for future use)
-    log_info "Creating update boot entry (os_b)"
-    cat > "${entries_dir}/archonos-update.conf" << EOF
-title   ArchonOS (Update)
-linux   /vmlinuz-linux
-initrd  /initramfs-linux.img
-options root=UUID=${root_uuid} rootflags=subvol=${SUBVOL_OS_B} rw quiet splash
-EOF
     
     log_success "Boot entries created successfully"
 }
@@ -875,10 +934,9 @@ auto-entries yes
 auto-firmware yes
 EOF
     
-    # Create boot entry for atomic updates
-    log_info "Bootloader configured for atomic A/B updates"
-    log_info "Default boot: @os_a subvolume"
-    log_info "Update target: @os_b subvolume"
+    log_info "Bootloader configured with Btrfs snapshots"
+    log_info "Default boot: @ subvolume"
+    log_info "Rollback via Btrfs snapshots"
     log_info "Timeout: 5 seconds"
     
     log_success "Bootloader configuration completed"
@@ -918,7 +976,7 @@ verify_bootloader_installation() {
     
     # Check boot entries
     local entries_dir="${MOUNT_DIR}/boot/loader/entries"
-    local required_entries=("archonos.conf" "archonos-fallback.conf" "archonos-update.conf")
+    local required_entries=("archonos.conf" "archonos-fallback.conf")
     
     log_info "Verifying boot entries:"
     for entry in "${required_entries[@]}"; do
@@ -939,7 +997,7 @@ verify_bootloader_installation() {
     fi
     
     # Check kernel and initramfs
-    if [[ -f "${MOUNT_DIR}/boot/vmlinuz-linux" ]] && [[ -f "${MOUNT_DIR}/boot/initramfs-linux.img" ]]; then
+    if [[ -f "${MOUNT_DIR}/boot/vmlinuz-linux-zen" ]] && [[ -f "${MOUNT_DIR}/boot/initramfs-linux-zen.img" ]]; then
         log_info "✓ Kernel and initramfs present"
     else
         log_error "✗ Kernel or initramfs missing"
@@ -1021,8 +1079,8 @@ create_iso_structure() {
     
     # Copy kernel and initramfs
     log_info "Copying kernel and initramfs"
-    cp "${MOUNT_DIR}/boot/vmlinuz-linux" "${ISO_DIR}/boot/"
-    cp "${MOUNT_DIR}/boot/initramfs-linux.img" "${ISO_DIR}/boot/"
+    cp "${MOUNT_DIR}/boot/vmlinuz-linux-zen" "${ISO_DIR}/boot/"
+    cp "${MOUNT_DIR}/boot/initramfs-linux-zen.img" "${ISO_DIR}/boot/"
     
     # Create SquashFS for live system
     log_info "Creating SquashFS for live system"
@@ -1060,17 +1118,17 @@ EOF
     # Create installation boot entry
     cat > "${ISO_DIR}/loader/entries/archonos-install.conf" << EOF
 title   Install ArchonOS to Hard Drive
-linux   /boot/vmlinuz-linux
-initrd  /boot/initramfs-linux.img
-options archisobasedir=archonos archisolabel=ARCHONOS cow_spacesize=1G
+linux   /boot/vmlinuz-linux-zen
+initrd  /boot/initramfs-linux-zen.img
+options archisobasedir=archonos archisolabel=ARCHONOS cow_spacesize=1G quiet splash loglevel=3 rd.udev.log_priority=3 vt.global_cursor_default=0 systemd.unified_cgroup_hierarchy=1 sysrq_always_enabled=1 mitigations=off nowatchdog
 EOF
     
     # Create rescue boot entry
     cat > "${ISO_DIR}/loader/entries/archonos-rescue.conf" << EOF
 title   ArchonOS Rescue Mode
-linux   /boot/vmlinuz-linux
-initrd  /boot/initramfs-linux.img
-options archisobasedir=archonos archisolabel=ARCHONOS cow_spacesize=1G rescue
+linux   /boot/vmlinuz-linux-zen
+initrd  /boot/initramfs-linux-zen.img
+options archisobasedir=archonos archisolabel=ARCHONOS cow_spacesize=1G rescue quiet splash loglevel=3 rd.udev.log_priority=3 vt.global_cursor_default=0 systemd.unified_cgroup_hierarchy=1 sysrq_always_enabled=1 mitigations=off nowatchdog
 EOF
     
     log_success "ISO boot configuration created"
@@ -1133,18 +1191,18 @@ MENU TITLE ArchonOS Installer
 
 LABEL install
     MENU LABEL Install ArchonOS to Hard Drive
-    KERNEL /boot/vmlinuz-linux
-    APPEND initrd=/boot/initramfs-linux.img archisobasedir=archonos archisolabel=ARCHONOS cow_spacesize=1G
+    KERNEL /boot/vmlinuz-linux-zen
+    APPEND initrd=/boot/initramfs-linux-zen.img archisobasedir=archonos archisolabel=ARCHONOS cow_spacesize=1G quiet splash loglevel=3 rd.udev.log_priority=3 vt.global_cursor_default=0 systemd.unified_cgroup_hierarchy=1 sysrq_always_enabled=1 mitigations=off nowatchdog
     
 LABEL rescue
     MENU LABEL ArchonOS Rescue Mode
-    KERNEL /boot/vmlinuz-linux
-    APPEND initrd=/boot/initramfs-linux.img archisobasedir=archonos archisolabel=ARCHONOS cow_spacesize=1G rescue
+    KERNEL /boot/vmlinuz-linux-zen
+    APPEND initrd=/boot/initramfs-linux-zen.img archisobasedir=archonos archisolabel=ARCHONOS cow_spacesize=1G rescue quiet splash loglevel=3 rd.udev.log_priority=3 vt.global_cursor_default=0 systemd.unified_cgroup_hierarchy=1 sysrq_always_enabled=1 mitigations=off nowatchdog
     
 LABEL install_nomodeset
     MENU LABEL Install ArchonOS (safe graphics)
-    KERNEL /boot/vmlinuz-linux
-    APPEND initrd=/boot/initramfs-linux.img archisobasedir=archonos archisolabel=ARCHONOS cow_spacesize=1G nomodeset
+    KERNEL /boot/vmlinuz-linux-zen
+    APPEND initrd=/boot/initramfs-linux-zen.img archisobasedir=archonos archisolabel=ARCHONOS cow_spacesize=1G nomodeset quiet splash loglevel=3 rd.udev.log_priority=3 vt.global_cursor_default=0 systemd.unified_cgroup_hierarchy=1 sysrq_always_enabled=1 mitigations=off nowatchdog
 EOF
 
     log_info "Running xorriso command..."

@@ -164,14 +164,82 @@ configure_sudo() {
 }
 
 configure_flatpak() {
-    log_step "Configuring Flatpak"
+    log_step "Configuring Flatpak (Garuda style)"
     
     log_info "Adding Flathub repository"
     
     # Add Flathub repository
     flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
     
+    # Install essential Flatpak applications (Garuda's selection)
+    log_info "Installing essential Flatpak applications"
+    flatpak install -y --noninteractive flathub org.mozilla.firefox
+    flatpak install -y --noninteractive flathub org.videolan.VLC
+    flatpak install -y --noninteractive flathub org.libreoffice.LibreOffice
+    flatpak install -y --noninteractive flathub org.gimp.GIMP
+    flatpak install -y --noninteractive flathub org.blender.Blender
+    flatpak install -y --noninteractive flathub com.valvesoftware.Steam
+    flatpak install -y --noninteractive flathub net.lutris.Lutris
+    flatpak install -y --noninteractive flathub com.heroicgameslauncher.hgl
+    flatpak install -y --noninteractive flathub com.discordapp.Discord
+    flatpak install -y --noninteractive flathub com.spotify.Client
+    flatpak install -y --noninteractive flathub org.audacityteam.Audacity
+    flatpak install -y --noninteractive flathub org.kde.krita
+    flatpak install -y --noninteractive flathub org.inkscape.Inkscape
+    flatpak install -y --noninteractive flathub org.kde.kdenlive
+    flatpak install -y --noninteractive flathub com.obsproject.Studio
+    flatpak install -y --noninteractive flathub org.signal.Signal
+    flatpak install -y --noninteractive flathub org.telegram.desktop
+    flatpak install -y --noninteractive flathub com.github.tchx84.Flatseal
+    flatpak install -y --noninteractive flathub org.gnome.baobab
+    flatpak install -y --noninteractive flathub org.gnome.Calculator
+    flatpak install -y --noninteractive flathub org.kde.ark
+    flatpak install -y --noninteractive flathub org.kde.spectacle
+    flatpak install -y --noninteractive flathub org.kde.gwenview
+    flatpak install -y --noninteractive flathub org.kde.konsole
+    flatpak install -y --noninteractive flathub org.kde.dolphin
+    flatpak install -y --noninteractive flathub org.kde.kate
+    
     log_success "Flatpak configuration completed"
+}
+
+install_linuxbrew() {
+    log_step "Installing LinuxBrew"
+    
+    log_info "Installing LinuxBrew for CLI tools"
+    
+    # Create linuxbrew user
+    useradd -m -s /bin/bash linuxbrew
+    
+    # Install LinuxBrew
+    sudo -u linuxbrew bash -c 'NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
+    
+    # Add LinuxBrew to PATH for all users
+    echo 'export PATH="/home/linuxbrew/.linuxbrew/bin:$PATH"' >> /etc/profile
+    echo 'export PATH="/home/linuxbrew/.linuxbrew/bin:$PATH"' >> /etc/bash.bashrc
+    
+    # Install essential CLI tools via LinuxBrew
+    log_info "Installing essential CLI tools via LinuxBrew"
+    sudo -u linuxbrew /home/linuxbrew/.linuxbrew/bin/brew install git
+    sudo -u linuxbrew /home/linuxbrew/.linuxbrew/bin/brew install node
+    sudo -u linuxbrew /home/linuxbrew/.linuxbrew/bin/brew install python
+    sudo -u linuxbrew /home/linuxbrew/.linuxbrew/bin/brew install rust
+    sudo -u linuxbrew /home/linuxbrew/.linuxbrew/bin/brew install go
+    sudo -u linuxbrew /home/linuxbrew/.linuxbrew/bin/brew install neovim
+    sudo -u linuxbrew /home/linuxbrew/.linuxbrew/bin/brew install bat
+    sudo -u linuxbrew /home/linuxbrew/.linuxbrew/bin/brew install exa
+    sudo -u linuxbrew /home/linuxbrew/.linuxbrew/bin/brew install fd
+    sudo -u linuxbrew /home/linuxbrew/.linuxbrew/bin/brew install ripgrep
+    sudo -u linuxbrew /home/linuxbrew/.linuxbrew/bin/brew install fzf
+    sudo -u linuxbrew /home/linuxbrew/.linuxbrew/bin/brew install zoxide
+    sudo -u linuxbrew /home/linuxbrew/.linuxbrew/bin/brew install starship
+    sudo -u linuxbrew /home/linuxbrew/.linuxbrew/bin/brew install lazygit
+    sudo -u linuxbrew /home/linuxbrew/.linuxbrew/bin/brew install docker
+    sudo -u linuxbrew /home/linuxbrew/.linuxbrew/bin/brew install kubectl
+    sudo -u linuxbrew /home/linuxbrew/.linuxbrew/bin/brew install terraform
+    sudo -u linuxbrew /home/linuxbrew/.linuxbrew/bin/brew install awscli
+    
+    log_success "LinuxBrew installation completed"
 }
 
 create_default_user() {
@@ -194,21 +262,19 @@ create_default_user() {
     log_success "User configuration completed"
 }
 
-configure_immutable_root() {
-    log_step "Configuring immutable root filesystem"
+
+configure_snapshots() {
+    log_step "Configuring Garuda's Timeshift snapshots"
     
-    log_info "Setting up read-only root filesystem configuration"
+    log_info "Setting up Timeshift for automatic snapshots (Garuda style)"
     
-    # Create systemd mount override for read-only root
-    mkdir -p /etc/systemd/system/-.mount.d
-    cat > /etc/systemd/system/-.mount.d/readonly.conf << EOF
-[Mount]
-Options=ro,noatime,compress=zstd:1,space_cache=v2,subvol=@os_a
-EOF
+    # Configure Timeshift for BTRFS snapshots
+    # This will be handled by the Garuda optimizations script
     
-    log_info "Root filesystem will be mounted read-only on next boot"
-    log_success "Immutable root configuration completed"
+    log_success "Timeshift snapshot configuration completed"
 }
+
+
 
 # Main configuration execution
 main() {
@@ -221,13 +287,26 @@ main() {
     enable_services
     configure_sudo
     configure_flatpak
+    install_linuxbrew
     create_default_user
-    configure_immutable_root
+    configure_snapshots
+    
+    # Run Garuda optimizations
+    log_info "Running Garuda Linux optimizations"
+    if [[ -f "/garuda-optimizations.sh" ]]; then
+        /garuda-optimizations.sh
+    fi
     
     # Add installer command to bashrc for easy access
     log_info "Setting up installer command alias"
     echo "alias install-archonos='sudo /usr/local/bin/install-archonos'" >> /home/archon/.bashrc
     echo "alias install='sudo /usr/local/bin/install-archonos'" >> /home/archon/.bashrc
+    
+    # Run desktop configuration
+    log_info "Running desktop configuration"
+    if [[ -f "/configure-desktop.sh" ]]; then
+        /configure-desktop.sh
+    fi
     
     log_success "ArchonOS system configuration completed successfully"
     log_info "System is ready for bootloader installation"
