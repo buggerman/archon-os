@@ -66,75 +66,29 @@ readonly BASE_PACKAGES=(
     "mkinitcpio"      # Initramfs generator
 )
 
-# Desktop packages (installed via arch-chroot after base) - Garuda Linux approach
+# Desktop packages (installed via arch-chroot after base) - Minimal working set
 readonly DESKTOP_PACKAGES=(
-    # Hardware support
-    "bluez"
-    "bluez-utils"
-    
-    # Desktop environment (KDE Plasma)
+    # Desktop environment (KDE Plasma minimal)
     "plasma-desktop"
-    "plasma-workspace"
-    "kwin"
     "sddm"
     "konsole"
     "dolphin"
     "kate"
     
-    # Wayland support
-    "wayland"
-    "xorg-xwayland"
-    "qt6-wayland"
+    # Basic system
+    "networkmanager"
+    "bluez"
+    "bluez-utils"
     
     # Application platforms
     "flatpak"
     
-    # Performance/gaming packages (official repos only)
-    "gamemode"
-    "irqbalance"
-    "zram-generator"
-    
-    # GPU drivers (essential)
-    "mesa"
-    "vulkan-icd-loader"
-    "vulkan-mesa-layers"
-    "intel-media-driver"
-    "xf86-video-amdgpu"
-    "vulkan-radeon"
-    
-    # Audio
-    "pipewire"
-    "pipewire-pulse"
-    "pipewire-alsa"
-    "pipewire-jack"
-    "wireplumber"
-    
-    # Snapshot system
-    "snapper"
-    "snap-pac"
-    "grub-btrfs"
-    
-    # Essential fonts
-    "ttf-dejavu"
-    "ttf-liberation"
-    "noto-fonts"
-    "noto-fonts-emoji"
-    
-    # Minimal utilities
+    # Essential utilities
     "which"
     "curl"
     "wget"
-    "unzip"
-    "tar"
-    "gcc"
-    "git"
     "vim"
     "htop"
-    "fastfetch"
-    "lm_sensors"
-    "thermald"
-    "cpupower"
-    "fwupd"
 )
 
 # Loop device variables
