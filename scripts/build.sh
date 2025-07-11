@@ -89,19 +89,11 @@ readonly DESKTOP_PACKAGES=(
     # Application platforms
     "flatpak"
     
-    # Garuda's performance/gaming packages
+    # Performance/gaming packages (official repos only)
     "gamemode"
     "lib32-gamemode"
-    "mangohud"
-    "lib32-mangohud"
     "irqbalance"
     "zram-generator"
-    "ananicy-cpp"
-    "memavaild"
-    "nohang"
-    "preload"
-    "prelockd"
-    "uresourced"
     
     # GPU drivers (essential)
     "mesa"
@@ -125,9 +117,9 @@ readonly DESKTOP_PACKAGES=(
     "lib32-pipewire"
     "wireplumber"
     
-    # Snapshot system - Garuda uses Timeshift
-    "timeshift"
-    "timeshift-autosnap"
+    # Snapshot system
+    "snapper"
+    "snap-pac"
     "grub-btrfs"
     
     # Essential fonts

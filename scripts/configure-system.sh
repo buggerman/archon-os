@@ -264,14 +264,14 @@ create_default_user() {
 
 
 configure_snapshots() {
-    log_step "Configuring Garuda's Timeshift snapshots"
+    log_step "Configuring Snapper snapshots"
     
-    log_info "Setting up Timeshift for automatic snapshots (Garuda style)"
+    log_info "Setting up Snapper for automatic snapshots"
     
-    # Configure Timeshift for BTRFS snapshots
-    # This will be handled by the Garuda optimizations script
+    # Configure Snapper for BTRFS snapshots
+    # This will be handled by the optimizations script
     
-    log_success "Timeshift snapshot configuration completed"
+    log_success "Snapper snapshot configuration completed"
 }
 
 
@@ -291,8 +291,8 @@ main() {
     create_default_user
     configure_snapshots
     
-    # Run Garuda optimizations
-    log_info "Running Garuda Linux optimizations"
+    # Run system optimizations
+    log_info "Running system optimizations"
     if [[ -f "/garuda-optimizations.sh" ]]; then
         /garuda-optimizations.sh
     fi

@@ -223,74 +223,51 @@ EOF
     log_success "Garuda ZRAM configuration created"
 }
 
-# Configure Timeshift for automatic snapshots
-configure_timeshift() {
-    log_step "Configuring Garuda's Timeshift automatic snapshots"
+# Configure Snapper for automatic snapshots
+configure_snapper() {
+    log_step "Configuring Snapper automatic snapshots"
     
-    # Create Timeshift configuration directory
-    mkdir -p /etc/timeshift
+    # Create Snapper configuration for root
+    snapper -c root create-config /
     
-    # Create Garuda's Timeshift configuration
-    cat > /etc/timeshift/timeshift.json << 'EOF'
-{
-  "backup_device_uuid" : "",
-  "parent_device_uuid" : "",
-  "do_first_run" : "false",
-  "btrfs_mode" : "true",
-  "include_btrfs_home_for_backup" : "false",
-  "include_btrfs_home_for_restore" : "false",
-  "stop_cron_emails" : "true",
-  "btrfs_use_qgroup" : "true",
-  "schedule_monthly" : "false",
-  "schedule_weekly" : "false",
-  "schedule_daily" : "true",
-  "schedule_hourly" : "false",
-  "schedule_boot" : "true",
-  "count_monthly" : "2",
-  "count_weekly" : "3",
-  "count_daily" : "5",
-  "count_hourly" : "6",
-  "count_boot" : "3",
-  "snapshot_size" : "0",
-  "snapshot_count" : "0",
-  "date_format" : "%Y-%m-%d %H:%M:%S",
-  "exclude" : [
-    "/home/**",
-    "/root/**",
-    "/media/**",
-    "/mnt/**",
-    "/cdrom/**",
-    "/tmp/**",
-    "/var/tmp/**",
-    "/var/cache/**",
-    "/var/log/**",
-    "/var/spool/**",
-    "/var/lib/dhcp/**",
-    "/var/lib/dhcpcd/**",
-    "/var/lib/systemd/**",
-    "/proc/**",
-    "/sys/**",
-    "/dev/**",
-    "/run/**"
-  ],
-  "include" : [
-  ]
-}
+    # Configure Snapper for automatic snapshots
+    cat > /etc/snapper/configs/root << 'EOF'
+# Snapper configuration for root filesystem
+SUBVOLUME="/"
+FSYSTEM="btrfs"
+TYPE="single"
+FORMAT="btrfs"
+TIMELINE_CREATE="yes"
+TIMELINE_CLEANUP="yes"
+TIMELINE_LIMIT_HOURLY="5"
+TIMELINE_LIMIT_DAILY="7"
+TIMELINE_LIMIT_WEEKLY="0"
+TIMELINE_LIMIT_MONTHLY="0"
+TIMELINE_LIMIT_YEARLY="0"
+TIMELINE_MIN_AGE="1800"
+EMPTY_PRE_POST_CLEANUP="yes"
+EMPTY_PRE_POST_MIN_AGE="1800"
+NUMBER_CLEANUP="yes"
+NUMBER_MIN_AGE="1800"
+NUMBER_LIMIT="50"
+NUMBER_LIMIT_IMPORTANT="10"
 EOF
-
-    # Enable timeshift services
-    systemctl enable cronie.service
     
-    log_success "Garuda Timeshift configuration created"
+    # Enable snapper services
+    systemctl enable snapper-timeline.timer
+    systemctl enable snapper-cleanup.timer
+    
+    log_success "Snapper configuration created"
 }
 
-# Configure Garuda's grub-btrfs for snapshot booting
+# Configure grub-btrfs for snapshot booting
 configure_grub_btrfs() {
-    log_step "Configuring Garuda's grub-btrfs for snapshot booting"
+    log_step "Configuring grub-btrfs for snapshot booting"
     
     # Create grub-btrfs configuration
+    mkdir -p /etc/default/grub-btrfs
     cat > /etc/default/grub-btrfs/config << 'EOF'
-# Garuda Linux grub-btrfs Configuration
+# grub-btrfs Configuration
 GRUB_BTRFS_OVERRIDE_BOOT_PARTITION_DETECTION="false"
 GRUB_BTRFS_MOUNT_POINT="/boot"
 GRUB_BTRFS_MKCONFIG_LIB="/usr/share/grub/grub-mkconfig_lib"
@@ -306,10 +283,8 @@ GRUB_BTRFS_DIRNAME="snapshots"
 GRUB_BTRFS_PROTECTION_AUTHORIZED_USERS=""
 GRUB_BTRFS_DISABLE_BOOTING_READONLY_SNAPSHOTS="false"
 EOF
-
-    mkdir -p /etc/default/grub-btrfs
     
-    log_success "Garuda grub-btrfs configuration created"
+    log_success "grub-btrfs configuration created"
 }
 
 # Main execution
@@ -321,7 +296,7 @@ main() {
     configure_cpu_governor
     configure_gaming_optimizations
     configure_zram
-    configure_timeshift
+    configure_snapper
     configure_grub_btrfs
     
     log_success "Garuda Linux optimizations configured successfully"
